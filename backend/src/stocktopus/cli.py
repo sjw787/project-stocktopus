@@ -553,5 +553,276 @@ def strategy_evaluate_cmd(
     asyncio.run(_run())
 
 
+# ── Backtest ──────────────────────────────────────────────────────────────────
+
+
+@cli.group()
+def backtest() -> None:
+    """Backtesting commands."""
+
+
+@backtest.command("run")
+@click.option("--symbol", default="SPY", show_default=True, help="Ticker symbol")
+@click.option(
+    "--from",
+    "from_date",
+    required=True,
+    metavar="YYYY-MM-DD",
+    help="Backtest start date (inclusive)",
+)
+@click.option(
+    "--to",
+    "to_date",
+    default=None,
+    metavar="YYYY-MM-DD",
+    help="Backtest end date (inclusive, default: today)",
+)
+@click.option("--capital", default=10_000.0, show_default=True, help="Initial capital USD")
+@click.option(
+    "--position-size",
+    default=50.0,
+    show_default=True,
+    help="Max notional per trade USD",
+)
+@click.option(
+    "--friction",
+    type=click.Choice(["realistic", "zero"], case_sensitive=False),
+    default="realistic",
+    show_default=True,
+    help="Friction model",
+)
+@click.option(
+    "--out-dir",
+    default="runs",
+    show_default=True,
+    help="Directory to write report artifacts",
+)
+@click.option("--no-html", is_flag=True, default=False, help="Skip HTML report generation")
+def backtest_run_cmd(
+    symbol: str,
+    from_date: str,
+    to_date: str | None,
+    capital: float,
+    position_size: float,
+    friction: str,
+    out_dir: str,
+    no_html: bool,
+) -> None:
+    """Run an event-driven backtest of the opening momentum strategy.
+
+    \b
+    Examples:
+        stocktopus backtest run --symbol SPY --from 2024-01-01
+        stocktopus backtest run --symbol SPY --from 2023-01-01 --to 2024-01-01 --capital 5000
+    """
+    import json
+    import uuid
+    from datetime import UTC, timedelta
+    from pathlib import Path
+
+    import pandas as pd
+    from sqlalchemy import select
+
+    from stocktopus.backtest.friction import FrictionModel
+    from stocktopus.backtest.report import render_report
+    from stocktopus.backtest.runner import BacktestRunner
+    from stocktopus.db.models import Candle, LLMLog
+    from stocktopus.features.models import Regime, TradeLean
+
+    start_dt = datetime.strptime(from_date, "%Y-%m-%d").replace(tzinfo=UTC)
+    end_dt = (
+        datetime.strptime(to_date, "%Y-%m-%d").replace(tzinfo=UTC)
+        if to_date
+        else datetime.now(UTC)
+    )
+    sym = symbol.upper()
+    run_id = str(uuid.uuid4())[:8]
+
+    friction_model = (
+        FrictionModel.realistic_alpaca() if friction == "realistic" else FrictionModel.zero()
+    )
+
+    click.echo(f"Backtest: {sym}  {from_date} → {to_date or 'today'}")
+    click.echo(f"Capital: ${capital:,.0f}  |  Position size: ${position_size:.0f}")
+    click.echo(f"Friction: {friction}  |  Run ID: {run_id}")
+    click.echo()
+
+    async def _run() -> None:
+        async with AsyncSessionFactory() as session:
+            # ── Load 5m intraday candles ──────────────────────────────────────
+            q5m = (
+                select(Candle)
+                .where(
+                    Candle.symbol == sym,
+                    Candle.timeframe == "5m",
+                    Candle.ts >= start_dt,
+                    Candle.ts <= end_dt,
+                )
+                .order_by(Candle.ts)
+            )
+            rows_5m = (await session.execute(q5m)).scalars().all()
+            if not rows_5m:
+                click.echo(
+                    f"ERROR: No 5m candles for {sym} in the given date range.\n"
+                    "Run: stocktopus ingest backfill --symbol SPY --from YYYY-MM-DD --timeframe 5m",
+                    err=True,
+                )
+                return
+
+            bars_5m = pd.DataFrame(
+                [
+                    {
+                        "symbol": c.symbol,
+                        "ts": c.ts,
+                        "open": c.open,
+                        "high": c.high,
+                        "low": c.low,
+                        "close": c.close,
+                        "volume": c.volume,
+                    }
+                    for c in rows_5m
+                ]
+            )
+            click.echo(f"Loaded {len(bars_5m):,} 5m bars")
+
+            # ── Load 1d candles for SMA/gap ───────────────────────────────────
+            q1d = (
+                select(Candle)
+                .where(
+                    Candle.symbol == sym,
+                    Candle.timeframe == "1d",
+                    Candle.ts <= end_dt,
+                )
+                .order_by(Candle.ts)
+            )
+            rows_1d = (await session.execute(q1d)).scalars().all()
+            bars_1d: pd.DataFrame | None = None
+            if rows_1d:
+                bars_1d = pd.DataFrame(
+                    [
+                        {
+                            "ts": c.ts,
+                            "open": c.open,
+                            "high": c.high,
+                            "low": c.low,
+                            "close": c.close,
+                            "volume": c.volume,
+                        }
+                        for c in rows_1d
+                    ]
+                )
+                click.echo(f"Loaded {len(bars_1d):,} 1d bars")
+
+            # ── Build regime map from stored LLM logs ─────────────────────────
+            q_llm = (
+                select(LLMLog)
+                .where(
+                    LLMLog.symbol == sym,
+                    LLMLog.parsed_ok.is_(True),
+                    LLMLog.ts >= start_dt,
+                    LLMLog.ts <= end_dt,
+                )
+                .order_by(LLMLog.ts)
+            )
+            llm_rows = (await session.execute(q_llm)).scalars().all()
+
+            from stocktopus.features.models import RegimeAssessment
+            regime_map: dict = {}
+            for row in llm_rows:
+                if row.regime_assessment:
+                    try:
+                        ra = RegimeAssessment(**row.regime_assessment)
+                        regime_map[row.ts.date()] = ra
+                    except Exception:  # noqa: BLE001
+                        pass
+
+            if not regime_map:
+                click.echo(
+                    "WARNING: No LLM regime assessments found for this period.\n"
+                    "Using a default TRENDING_UP / LONG / confidence=7 assessment for all bars.\n"
+                    "Run `stocktopus analyze regime` to populate real assessments.",
+                    err=True,
+                )
+                # Build synthetic regime map so backtest still runs
+                cur = start_dt.date()
+                end_d = end_dt.date()
+                default_ra = RegimeAssessment(
+                    regime=Regime.TRENDING_UP,
+                    lean=TradeLean.LONG,
+                    confidence=7,
+                    reasoning="Default synthetic regime for backtest",
+                    key_risks=["no llm data"],
+                    invalidation="N/A",
+                )
+                while cur <= end_d:
+                    regime_map[cur] = default_ra
+                    cur += timedelta(days=1)
+
+        # ── Run backtest ──────────────────────────────────────────────────────
+        click.echo(f"\nRunning backtest with {len(regime_map)} regime assessment(s)...")
+        runner = BacktestRunner(
+            symbol=sym,
+            intraday_bars=bars_5m,
+            daily_bars=bars_1d,
+            regime_map=regime_map,
+            friction=friction_model,
+            initial_capital=capital,
+            position_size_usd=position_size,
+        )
+        trades, metrics = runner.run()
+
+        # ── Print summary ─────────────────────────────────────────────────────
+        click.echo()
+        click.echo("=" * 50)
+        click.echo(f"  Net Return:    {metrics.total_return_pct:+.2f}%")
+        click.echo(f"  Total Trades:  {metrics.total_trades}")
+        click.echo(f"  Win Rate:      {metrics.win_rate * 100:.1f}%")
+        pf = metrics.profit_factor
+        click.echo(f"  Profit Factor: {f'{pf:.2f}' if pf else 'N/A'}")
+        click.echo(f"  Expectancy:    ${metrics.expectancy:+.2f} / trade")
+        click.echo(f"  Max Drawdown:  -{metrics.max_drawdown_pct:.2f}%")
+        sr = metrics.sharpe_ratio
+        click.echo(f"  Sharpe Ratio:  {f'{sr:.2f}' if sr else 'N/A'}")
+        click.echo(f"  Total Friction:${metrics.total_friction:.2f}")
+        click.echo("=" * 50)
+
+        if metrics.regime_breakdown:
+            click.echo("\nPer-Regime Breakdown:")
+            for regime, data in sorted(metrics.regime_breakdown.items()):
+                click.echo(
+                    f"  {regime:<20} trades={data['trades']:>3}  "
+                    f"wr={data['win_rate']*100:>5.1f}%  "
+                    f"pnl=${data['net_pnl']:>+8.2f}"
+                )
+
+        # ── Write artifacts ───────────────────────────────────────────────────
+        if not no_html:
+            run_dir = Path(out_dir) / run_id
+            run_dir.mkdir(parents=True, exist_ok=True)
+
+            report_path = run_dir / "report.html"
+            equity_values = [capital]
+            for t in trades:
+                equity_values.append(equity_values[-1] + t.net_pnl)
+            render_report(
+                metrics=metrics,
+                trades=trades,
+                equity_curve=equity_values,
+                run_id=run_id,
+                output_path=report_path,
+            )
+
+            metrics_path = run_dir / "metrics.json"
+            metrics_path.write_text(json.dumps(metrics.to_dict(), indent=2))
+
+            trades_path = run_dir / "trades.json"
+            trades_path.write_text(json.dumps([t.to_dict() for t in trades], indent=2))
+
+            click.echo(f"\nArtifacts written to: {run_dir}/")
+            click.echo(f"  Open: {report_path}")
+
+    asyncio.run(_run())
+
+
 if __name__ == "__main__":
     main()
