@@ -1051,3 +1051,140 @@ def paper_drift_cmd(days: int, min_win_rate: float, min_pf: float) -> None:
 
 if __name__ == "__main__":
     main()
+
+
+# ── live ─────────────────────────────────────────────────────────────────────
+
+
+@cli.group()
+def live() -> None:
+    """Phase 9: real-money trading commands (use with extreme caution)."""
+
+
+@live.command("promote")
+@click.option(
+    "--confirm-key-1",
+    required=True,
+    metavar="LIVE",
+    help='First confirmation key — type the literal word "LIVE"',
+)
+@click.option(
+    "--confirm-key-2",
+    required=True,
+    metavar="IUNDERSTAND",
+    help='Second confirmation key — type the literal phrase "IUNDERSTAND"',
+)
+def live_promote_cmd(confirm_key_1: str, confirm_key_2: str) -> None:
+    """Promote to LIVE trading mode (Phase 9 gate).
+
+    Requires two explicit confirmation flags and Phase 8 gate clearance.
+    This writes TRADING_MODE=live to the .env file — which causes the
+    broker adapter to use Alpaca's live endpoint on next startup.
+
+    \b
+    Prerequisites:
+        - Phase 8 gate cleared (100 completed paper trades, 3+ regimes)
+        - Drift alarm must be INACTIVE
+        - Alpaca live API credentials must be set
+
+    \b
+    Example:
+        stocktopus live promote --confirm-key-1 LIVE --confirm-key-2 IUNDERSTAND
+    """
+    from pathlib import Path
+
+    if confirm_key_1 != "LIVE":
+        click.echo('❌  --confirm-key-1 must be exactly "LIVE"', err=True)
+        raise SystemExit(1)
+    if confirm_key_2 != "IUNDERSTAND":
+        click.echo('❌  --confirm-key-2 must be exactly "IUNDERSTAND"', err=True)
+        raise SystemExit(1)
+
+    from stocktopus.backtest.drift import DriftChecker
+
+    async def _run() -> None:
+        async with AsyncSessionFactory() as session:
+            # Phase 8 gate check
+            from sqlalchemy import text
+
+            result = await session.execute(
+                text(
+                    "SELECT COUNT(*) FROM paper_trades WHERE exit_ts IS NOT NULL"
+                )
+            )
+            completed = result.scalar() or 0
+
+            regime_result = await session.execute(
+                text(
+                    "SELECT COUNT(DISTINCT regime) FROM paper_trades WHERE exit_ts IS NOT NULL"
+                )
+            )
+            regimes = regime_result.scalar() or 0
+
+            if completed < 100:
+                click.echo(
+                    f"❌  Phase 8 gate not cleared: only {completed}/100 completed trades.",
+                    err=True,
+                )
+                raise SystemExit(1)
+
+            if regimes < 3:
+                click.echo(
+                    f"❌  Phase 8 gate not cleared: only {regimes}/3 distinct regimes.",
+                    err=True,
+                )
+                raise SystemExit(1)
+
+            # Drift alarm check
+            checker = DriftChecker()
+            drift_status = await checker.check(session)
+            if drift_status.alarm_active:
+                click.echo(
+                    f"❌  Drift alarm is active: {'; '.join(drift_status.alarm_reasons)}",
+                    err=True,
+                )
+                click.echo("    Resolve distribution issues before going live.", err=True)
+                raise SystemExit(1)
+
+        # Write TRADING_MODE=live to .env
+        env_path = Path(".env")
+        if env_path.exists():
+            lines = env_path.read_text().splitlines()
+            replaced = False
+            new_lines = []
+            for line in lines:
+                if line.startswith("TRADING_MODE="):
+                    new_lines.append("TRADING_MODE=live")
+                    replaced = True
+                else:
+                    new_lines.append(line)
+            if not replaced:
+                new_lines.append("TRADING_MODE=live")
+            env_path.write_text("\n".join(new_lines) + "\n")
+        else:
+            env_path.write_text("TRADING_MODE=live\n")
+
+        click.echo()
+        click.echo("🟢  Trading mode promoted to LIVE.")
+        click.echo("    Restart the server to apply. Max position: $50 | Max daily loss: $25.")
+        click.echo("    To revert: set TRADING_MODE=paper in .env and restart.")
+
+    asyncio.run(_run())
+
+
+@live.command("status")
+def live_status_cmd() -> None:
+    """Show current trading mode and live safety caps."""
+    from stocktopus.config import get_settings
+
+    s = get_settings()
+    mode = s.trading_mode.upper()
+    color = "green" if s.trading_mode == "paper" else "red"
+    click.echo()
+    click.echo(f"  Trading mode:     {click.style(mode, fg=color, bold=True)}")
+    click.echo(f"  Max position:     ${s.max_position_usd:.2f}")
+    click.echo(f"  Max daily loss:   ${s.max_daily_loss_usd:.2f}")
+    click.echo(f"  Max trades/day:   {s.max_trades_per_day}")
+    click.echo(f"  No overnight:     {s.no_overnight_holds}")
+    click.echo(f"  No leverage:      {s.no_leverage}")
+    click.echo()

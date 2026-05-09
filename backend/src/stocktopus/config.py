@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -49,6 +50,10 @@ class Settings(BaseSettings):
     no_overnight_holds: bool = True
     no_leverage: bool = True
 
+    # Trading mode — requires explicit promotion to "live" via CLI two-key confirm
+    # "paper" = Alpaca paper endpoint, "live" = real money (Alpaca live endpoint)
+    trading_mode: Literal["paper", "live"] = "paper"
+
     # Universe
     allowed_symbols: list[str] = Field(default=["SPY"])
 
@@ -59,6 +64,14 @@ class Settings(BaseSettings):
     @property
     def is_test(self) -> bool:
         return self.env == "test"
+
+    @property
+    def is_paper(self) -> bool:
+        return self.trading_mode == "paper"
+
+    @property
+    def is_live(self) -> bool:
+        return self.trading_mode == "live"
 
 
 @lru_cache
