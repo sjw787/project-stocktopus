@@ -139,6 +139,22 @@ export interface PaperDrift {
   thresholds: { min_win_rate: number; min_profit_factor: number; lookback_days: number };
 }
 
+export interface TickResult {
+  ts: string;
+  symbol: string;
+  action: "no_op" | "rejected" | "dry_run_entry" | "entry_placed";
+  reason: string | null;
+  thesis?: {
+    direction: string;
+    entry: number;
+    stop: number;
+    tp: number;
+  };
+  qty?: number;
+  order_id?: string;
+  trade_id?: string;
+}
+
 export interface PaperTrade {
   id: string;
   symbol: string;
@@ -176,7 +192,7 @@ export const api = {
 
   // Paper trading
   paperStatus: () => get<PaperStatus>("/api/paper/status"),
-  paperTick: () => post<unknown>("/api/paper/tick"),
+  paperTick: () => post<TickResult>("/api/paper/tick"),
   paperKill: (symbol?: string) =>
     post<unknown>(`/api/paper/kill${symbol ? `?symbol=${symbol}` : ""}`),
   paperDrift: () => get<PaperDrift>("/api/paper/drift"),

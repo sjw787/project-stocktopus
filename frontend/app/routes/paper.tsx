@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle, RefreshCw, Zap, ZapOff } from "lucide-react";
-import { api, type PaperDrift, type PaperStatus, type PaperTrade } from "~/lib/api";
+import { useState } from "react";
+import { api, type PaperDrift, type PaperStatus, type PaperTrade, type TickResult } from "~/lib/api";
 
 export const Route = createFileRoute("/paper")({
   component: PaperPage,
@@ -55,6 +56,7 @@ function EmptyState({ message }: { message: string }) {
 
 function StatusCard() {
   const qc = useQueryClient();
+  const [lastTick, setLastTick] = useState<TickResult | null>(null);
   const { data, isLoading, isError } = useQuery<PaperStatus>({
     queryKey: ["paper-status"],
     queryFn: api.paperStatus,
@@ -63,12 +65,20 @@ function StatusCard() {
 
   const tick = useMutation({
     mutationFn: api.paperTick,
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["paper-status"] }),
+    onSuccess: (result) => {
+      setLastTick(result);
+      void qc.invalidateQueries({ queryKey: ["paper-status"] });
+      void qc.invalidateQueries({ queryKey: ["paper-trades"] });
+      void qc.invalidateQueries({ queryKey: ["paper-drift"] });
+    },
   });
 
   const kill = useMutation({
     mutationFn: () => api.paperKill(),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["paper-status"] }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["paper-status"] });
+      void qc.invalidateQueries({ queryKey: ["paper-trades"] });
+    },
   });
 
   return (
@@ -109,6 +119,31 @@ function StatusCard() {
             <StatTile label="Open Positions" value={String(data.open_positions)} />
             <StatTile label="Kill Switch" value={data.kill_switch_active ? "ACTIVE" : "off"} color={data.kill_switch_active ? "var(--red)" : undefined} />
           </div>
+
+          {/* Last tick result */}
+          {lastTick && (
+            <div
+              className="rounded-lg px-3 py-2 text-xs"
+              style={{
+                background: "var(--bg)",
+                border: "1px solid var(--border)",
+                color: lastTick.action === "entry_placed" || lastTick.action === "dry_run_entry"
+                  ? "var(--green)"
+                  : lastTick.action === "rejected"
+                  ? "var(--red)"
+                  : "var(--text-muted)",
+              }}
+            >
+              <span className="font-semibold uppercase">{lastTick.action.replace(/_/g, " ")}</span>
+              {lastTick.reason && <span> — {lastTick.reason.replace(/_/g, " ")}</span>}
+              {lastTick.qty != null && <span> · {lastTick.qty} shares</span>}
+            </div>
+          )}
+          {tick.isError && (
+            <div className="rounded-lg px-3 py-2 text-xs" style={{ color: "var(--red)", border: "1px solid var(--red)" }}>
+              Tick failed — {String(tick.error)}
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex gap-2">
