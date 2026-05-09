@@ -48,7 +48,7 @@ _STATUS_MAP: dict[str, OrderStatus] = {
 
 
 def _map_status(raw_status: str) -> OrderStatus:
-    return _STATUS_MAP.get(raw_status.lower(), OrderStatus.PENDING)
+    return _STATUS_MAP.get(raw_status.lower().split(".")[-1], OrderStatus.PENDING)
 
 
 class AlpacaBrokerAdapter(BrokerAdapter):
@@ -79,7 +79,7 @@ class AlpacaBrokerAdapter(BrokerAdapter):
             order_id=str(order.id),
             client_order_id=str(getattr(order, "client_order_id", "")),
             symbol=str(order.symbol),
-            side=OrderSide(str(order.side).lower().replace("ordersideenum.", "")),
+            side=OrderSide(str(order.side).lower().split(".")[-1]),
             qty=float(getattr(order, "qty", 0) or 0),
             filled_qty=float(getattr(order, "filled_qty", 0) or 0),
             filled_avg_price=(
