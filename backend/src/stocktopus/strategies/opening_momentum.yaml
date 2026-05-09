@@ -11,7 +11,7 @@ strategy:
 # ── Entry filters (ALL must pass) ────────────────────────────────────────────
 entry:
   # Minimum gap-up percentage from prior close to today's open.
-  min_gap_pct: 0.5             # %
+  min_gap_pct: 0.3             # %
 
   # Minimum relative volume vs 20-day average at the same bar.
   min_rvol: 1.5

@@ -20,7 +20,6 @@ from loguru import logger
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-
 @dataclass
 class DriftMetrics:
     """Computed distribution metrics over a sample of trades."""
