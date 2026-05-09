@@ -9,6 +9,7 @@ from stocktopus.api.analyze import router as analyze_router
 from stocktopus.api.candles import router as candles_router
 from stocktopus.api.context import router as context_router
 from stocktopus.api.news import router as news_router
+from stocktopus.api.paper import paper_router
 from stocktopus.api.strategy import router as strategy_router
 from stocktopus.config import get_settings
 from stocktopus.logging_config import configure_logging
@@ -58,6 +59,7 @@ def create_app() -> FastAPI:
     app.include_router(context_router)
     app.include_router(analyze_router)
     app.include_router(strategy_router)
+    app.include_router(paper_router)
 
     return app
 

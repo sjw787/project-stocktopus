@@ -243,3 +243,63 @@ class TradeRejection(Base):
     feature_snapshot: Mapped["FeatureSnapshot | None"] = relationship(
         "FeatureSnapshot", foreign_keys=[feature_snapshot_id]
     )
+
+
+# ── Paper Trade Journal ────────────────────────────────────────────────────────
+
+
+class PaperTrade(Base):
+    """Per-trade journal for paper (and live) trades.
+
+    Tracks every entry/exit with regime context, AI confidence, and outcome.
+    Used for Phase 8 gating: 100 trades across 3+ regimes required before Phase 9.
+    """
+
+    __tablename__ = "paper_trades"
+    __table_args__ = (
+        Index("ix_paper_trades_symbol_ts", "symbol", "entry_ts"),
+        Index("ix_paper_trades_regime", "regime"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    symbol: Mapped[str] = mapped_column(String(16), nullable=False)
+    is_paper: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    # Entry
+    entry_ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    entry_price: Mapped[float] = mapped_column(Float, nullable=False)
+    qty: Mapped[float] = mapped_column(Float, nullable=False)
+    direction: Mapped[str] = mapped_column(String(8), nullable=False, default="long")
+    stop_loss: Mapped[float] = mapped_column(Float, nullable=False)
+    take_profit: Mapped[float] = mapped_column(Float, nullable=False)
+    entry_order_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    # Exit (populated when position closes)
+    exit_ts: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    exit_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    exit_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    exit_order_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    realized_pnl: Mapped[float | None] = mapped_column(Numeric(12, 4), nullable=True)
+
+    # AI context at entry
+    regime: Mapped[str] = mapped_column(String(32), nullable=False, default="unknown")
+    lean: Mapped[str] = mapped_column(String(16), nullable=False, default="unknown")
+    llm_confidence: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    strategy_name: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    strategy_version: Mapped[str] = mapped_column(String(16), nullable=False, default="v1")
+
+    # Post-mortem notes
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    llm_log_id: Mapped[str | None] = mapped_column(ForeignKey("llm_logs.id"), nullable=True)
+    feature_snapshot_id: Mapped[str | None] = mapped_column(
+        ForeignKey("feature_snapshots.id"), nullable=True
+    )
+
+    llm_log: Mapped["LLMLog | None"] = relationship("LLMLog", foreign_keys=[llm_log_id])
+    feature_snapshot_ref: Mapped["FeatureSnapshot | None"] = relationship(
+        "FeatureSnapshot", foreign_keys=[feature_snapshot_id]
+    )

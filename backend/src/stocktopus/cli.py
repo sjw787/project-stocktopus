@@ -276,6 +276,7 @@ _PURGEABLE_TABLES = {
     "news_events": "news_events",
     "trade_lots": "trade_lots",
     "trade_rejections": "trade_rejections",
+    "paper_trades": "paper_trades",
 }
 
 
@@ -292,6 +293,7 @@ def db_status_cmd() -> None:
         "news_events",
         "trade_lots",
         "trade_rejections",
+        "paper_trades",
     ]
 
     async def _run() -> None:
@@ -820,6 +822,177 @@ def backtest_run_cmd(
 
             click.echo(f"\nArtifacts written to: {run_dir}/")
             click.echo(f"  Open: {report_path}")
+
+    asyncio.run(_run())
+
+
+# ── Paper trading ─────────────────────────────────────────────────────────────
+
+
+@cli.group()
+def paper() -> None:
+    """Paper trading commands."""
+
+
+@paper.command("tick")
+@click.option("--symbol", default="SPY", show_default=True, help="Ticker symbol")
+@click.option(
+    "--provider",
+    type=click.Choice(["openai", "anthropic"], case_sensitive=False),
+    default=None,
+)
+@click.option("--dry-run", is_flag=True, default=False, help="Log signal but don't place orders")
+def paper_tick_cmd(symbol: str, provider: str | None, dry_run: bool) -> None:
+    """Run one paper-trading decision tick for a symbol.
+
+    Fetches latest features, gets LLM regime, evaluates strategy and risk filter,
+    and places a paper order via Alpaca if conditions are met.
+
+    \b
+    Example:
+        stocktopus paper tick --symbol SPY
+        stocktopus paper tick --symbol SPY --dry-run
+    """
+    import json
+
+    from stocktopus.broker.alpaca_adapter import AlpacaBrokerAdapter
+    from stocktopus.broker.paper_trader import PaperTrader
+    from stocktopus.llm.anthropic_provider import AnthropicProvider
+    from stocktopus.llm.openai_provider import OpenAIProvider
+    from stocktopus.llm.research_director import ResearchDirector
+
+    settings = get_settings()
+    active = (provider or settings.active_llm_provider).lower()
+
+    if active == "anthropic":
+        if not settings.anthropic_api_key:
+            click.echo("ERROR: ANTHROPIC_API_KEY not set", err=True)
+            sys.exit(1)
+        llm = AnthropicProvider(api_key=settings.anthropic_api_key)
+    else:
+        if not settings.openai_api_key:
+            click.echo("ERROR: OPENAI_API_KEY not set", err=True)
+            sys.exit(1)
+        llm = OpenAIProvider(api_key=settings.openai_api_key)
+
+    if (not settings.alpaca_api_key or not settings.alpaca_secret_key) and not dry_run:
+        click.echo("ERROR: ALPACA_API_KEY / ALPACA_SECRET_KEY not set", err=True)
+        sys.exit(1)
+
+    director = ResearchDirector(llm=llm, daily_budget_usd=settings.llm_daily_budget_usd)
+
+    async def _run() -> None:
+        from stocktopus.broker.mock_adapter import MockBrokerAdapter
+
+        async with AsyncSessionFactory() as session:
+            if dry_run or not settings.alpaca_api_key:
+                broker = MockBrokerAdapter()
+            else:
+                broker = AlpacaBrokerAdapter(
+                    api_key=settings.alpaca_api_key,
+                    secret_key=settings.alpaca_secret_key,
+                    paper=True,
+                )
+
+            trader = PaperTrader(
+                broker=broker,
+                director=director,
+                session=session,
+                symbol=symbol.upper(),
+                max_position_usd=settings.max_position_usd,
+                max_daily_loss_usd=settings.max_daily_loss_usd,
+                max_trades_per_day=settings.max_trades_per_day,
+                dry_run=dry_run,
+            )
+            result = await trader.tick()
+
+        click.echo(json.dumps(result, indent=2, default=str))
+
+    asyncio.run(_run())
+
+
+@paper.command("kill")
+@click.option("--symbol", default=None, help="Symbol to flatten (default: all)")
+@click.option("--yes", is_flag=True, default=False)
+def paper_kill_cmd(symbol: str | None, yes: bool) -> None:
+    """KILL SWITCH — flatten all open paper positions immediately."""
+    from stocktopus.broker.alpaca_adapter import AlpacaBrokerAdapter
+
+    settings = get_settings()
+    if not settings.alpaca_api_key:
+        click.echo("ERROR: ALPACA_API_KEY not set", err=True)
+        sys.exit(1)
+
+    if not yes:
+        click.confirm("Flatten ALL paper positions?", abort=True)
+
+    broker = AlpacaBrokerAdapter(
+        api_key=settings.alpaca_api_key,
+        secret_key=settings.alpaca_secret_key,
+        paper=True,
+    )
+
+    async def _run() -> None:
+        if symbol:
+            result = await broker.close_position(symbol.upper())
+            if result:
+                click.echo(f"Closed {symbol.upper()}: order {result.order_id}")
+            else:
+                click.echo(f"No open position for {symbol.upper()}")
+        else:
+            results = await broker.close_all_positions()
+            for r in results:
+                click.echo(f"Closed {r.symbol}: order {r.order_id}")
+            if not results:
+                click.echo("No open positions to close.")
+
+    asyncio.run(_run())
+
+
+@paper.command("status")
+def paper_status_cmd() -> None:
+    """Show Phase 8 gating progress: trades, regimes covered."""
+    from sqlalchemy import text
+
+    async def _run() -> None:
+        async with AsyncSessionFactory() as session:
+            # Total completed trades
+            total = (
+                await session.execute(
+                    text("SELECT COUNT(*) FROM paper_trades WHERE exit_ts IS NOT NULL")
+                )
+            ).scalar_one()
+
+            # Regimes covered
+            regimes = (
+                await session.execute(
+                    text(
+                        "SELECT regime, COUNT(*) as cnt FROM paper_trades "
+                        "WHERE exit_ts IS NOT NULL GROUP BY regime ORDER BY cnt DESC"
+                    )
+                )
+            ).fetchall()
+
+            click.echo("\nPhase 8 Gate Progress")
+            click.echo("=" * 40)
+            click.echo(f"  Completed trades:  {total:>4} / 100 required")
+            click.echo(f"  Regimes covered:   {len(regimes):>4} / 3 required")
+            click.echo()
+            click.echo(f"{'Regime':<24} {'Trades':>6}")
+            click.echo("-" * 32)
+            for regime, cnt in regimes:
+                click.echo(f"  {regime:<22} {cnt:>6}")
+            click.echo()
+
+            if total >= 100 and len(regimes) >= 3:
+                click.echo("✅  Phase 8 gate PASSED — ready for Phase 9!")
+            else:
+                remaining_trades = max(0, 100 - total)
+                remaining_regimes = max(0, 3 - len(regimes))
+                click.echo(
+                    f"⏳  Not ready: need {remaining_trades} more trades, "
+                    f"{remaining_regimes} more regime(s)"
+                )
 
     asyncio.run(_run())
 
