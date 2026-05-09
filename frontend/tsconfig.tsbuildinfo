@@ -1,0 +1,1 @@
+{"root":["./app/client.tsx","./app/routetree.gen.ts","./app/router.tsx","./app/vite-env.d.ts","./app/lib/api.ts","./app/routes/__root.tsx","./app/routes/index.tsx","./app/routes/news.tsx","./app/routes/paper.tsx","./app/routes/strategy.tsx"],"version":"5.8.3"}

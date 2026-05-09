@@ -46,6 +46,8 @@ function Nav() {
         🐙 Stocktopus
       </span>
       <NavLink to="/">Dashboard</NavLink>
+      <NavLink to="/strategy">Strategy</NavLink>
+      <NavLink to="/paper">Paper</NavLink>
       <NavLink to="/news">News</NavLink>
     </nav>
   );

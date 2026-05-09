@@ -3,12 +3,19 @@
 GET /api/strategy/evaluate?symbol=SPY
   → Runs: features → LLM regime → strategy signal → risk filter
   → Returns TradeThesisOut or a no-signal response
+
+GET /api/strategy/config
+  → Returns current strategy configuration from settings
+
+POST /api/strategy/backtest
+  → Runs a quick offline backtest against stored candle data
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 
+import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import desc, select
@@ -16,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from stocktopus.config import Settings, get_settings
 from stocktopus.db.engine import get_session as get_db_session
-from stocktopus.db.models import FeatureSnapshot
+from stocktopus.db.models import Candle, FeatureSnapshot
 from stocktopus.features.models import FeatureVector, RegimeAssessment
 from stocktopus.llm.research_director import ResearchDirector
 from stocktopus.risk.filter import FilterResult, RiskFilter
@@ -180,4 +187,199 @@ async def evaluate(
         risk_approved=fr.approved,
         thesis=thesis_out,
         risk_checks=checks_out,
+    )
+
+
+# ── Config endpoint ───────────────────────────────────────────────────────────
+
+
+class StrategyConfigOut(BaseModel):
+    symbol: str
+    timeframe: str
+    entry_time: str
+    exit_time: str
+    max_daily_trades: int
+    position_size_pct: float
+    stop_loss_pct: float
+    take_profit_pct: float
+    require_regime: str | None
+    min_llm_confidence: int | None
+
+
+@router.get("/config", response_model=StrategyConfigOut)
+async def strategy_config(
+    settings: Settings = Depends(get_settings),  # noqa: B008
+) -> StrategyConfigOut:
+    """Return current strategy configuration derived from settings."""
+    strat = OpeningMomentumStrategy()
+    return StrategyConfigOut(
+        symbol="SPY",
+        timeframe="5m",
+        entry_time=getattr(strat, "entry_time", "09:35"),
+        exit_time=getattr(strat, "exit_time", "15:55"),
+        max_daily_trades=settings.max_trades_per_day,
+        position_size_pct=round(settings.max_position_usd / 10_000 * 100, 2),
+        stop_loss_pct=getattr(strat, "stop_loss_pct", 0.5),
+        take_profit_pct=getattr(strat, "take_profit_pct", 1.0),
+        require_regime=getattr(strat, "require_regime", None),
+        min_llm_confidence=getattr(strat, "min_confidence", None),
+    )
+
+
+# ── Backtest endpoint ─────────────────────────────────────────────────────────
+
+
+class BacktestRequest(BaseModel):
+    symbol: str = "SPY"
+    start: str  # ISO date: YYYY-MM-DD
+    end: str  # ISO date: YYYY-MM-DD
+    timeframe: str = "5m"
+
+
+class BacktestTradeOut(BaseModel):
+    entry_ts: str
+    exit_ts: str | None
+    direction: str
+    entry_price: float
+    exit_price: float | None
+    pnl: float | None
+    exit_reason: str
+
+
+class BacktestMetricsOut(BaseModel):
+    total_trades: int
+    win_rate: float
+    net_profit: float
+    max_drawdown: float
+    sharpe_ratio: float | None
+    profit_factor: float | None
+    avg_win: float
+    avg_loss: float
+    expectancy: float
+
+
+class BacktestResponse(BaseModel):
+    symbol: str
+    start: str
+    end: str
+    metrics: BacktestMetricsOut
+    trades: list[BacktestTradeOut]
+
+
+@router.post("/backtest", response_model=BacktestResponse)
+async def run_backtest(
+    req: BacktestRequest,
+    session: AsyncSession = Depends(get_db_session),  # noqa: B008
+) -> BacktestResponse:
+    """Run a quick offline backtest against stored candle data."""
+
+    from stocktopus.backtest.runner import BacktestRunner
+    from stocktopus.features.models import Regime, TradeLean
+
+    sym = req.symbol.upper()
+
+    # Load intraday bars
+    q_5m = (
+        select(Candle)
+        .where(
+            Candle.symbol == sym,
+            Candle.timeframe == req.timeframe,
+            Candle.ts >= req.start,
+            Candle.ts < req.end,
+        )
+        .order_by(Candle.ts)
+    )
+    rows_5m = (await session.execute(q_5m)).scalars().all()
+    if not rows_5m:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"No {req.timeframe} candle data for {sym} "
+                f"in [{req.start}, {req.end}). Run ingestion first."
+            ),
+        )
+
+    # Load daily bars
+    q_1d = (
+        select(Candle)
+        .where(
+            Candle.symbol == sym,
+            Candle.timeframe == "1d",
+            Candle.ts >= req.start,
+            Candle.ts < req.end,
+        )
+        .order_by(Candle.ts)
+    )
+    rows_1d = (await session.execute(q_1d)).scalars().all()
+
+    def to_df(rows: list) -> pd.DataFrame:
+        return pd.DataFrame([
+            {
+                "ts": r.ts,
+                "open": r.open,
+                "high": r.high,
+                "low": r.low,
+                "close": r.close,
+                "volume": r.volume,
+                "symbol": r.symbol,
+            }
+            for r in rows
+        ])
+
+    intraday_df = to_df(rows_5m)
+    daily_df = to_df(rows_1d) if rows_1d else None
+
+    # Neutral regime assessment for all dates (no LLM budget spent in backtest)
+    neutral = RegimeAssessment(
+        regime=Regime.TRENDING_UP,
+        lean=TradeLean.LONG,
+        confidence=60,
+        reasoning="Offline backtest — neutral regime assumed",
+        key_risks=[],
+    )
+    regime_map = {
+        d: neutral
+        for d in pd.date_range(req.start, req.end, freq="D")
+    }
+
+    runner = BacktestRunner(
+        symbol=sym,
+        intraday_bars=intraday_df,
+        daily_bars=daily_df,
+        regime_map={k.date(): neutral for k in regime_map},
+    )
+    trades, metrics = runner.run()
+
+    n_wins = sum(1 for t in trades if t.pnl and t.pnl > 0)
+    n_losses = sum(1 for t in trades if t.pnl and t.pnl < 0)
+    avg_win = sum(t.pnl for t in trades if t.pnl and t.pnl > 0) / max(1, n_wins)
+    avg_loss = sum(t.pnl for t in trades if t.pnl and t.pnl < 0) / max(1, n_losses)
+
+    return BacktestResponse(
+        symbol=sym,
+        start=req.start,
+        end=req.end,
+        metrics=BacktestMetricsOut(
+            total_trades=metrics.total_trades,
+            win_rate=round(metrics.win_rate, 4),
+            net_profit=round(metrics.net_profit, 2),
+            max_drawdown=round(metrics.max_drawdown_pct, 4),
+            sharpe_ratio=metrics.sharpe_ratio,
+            profit_factor=metrics.profit_factor,
+            avg_win=round(avg_win, 2),
+            avg_loss=round(avg_loss, 2),
+            expectancy=round(metrics.expectancy, 4),
+        ),
+        trades=[
+            BacktestTradeOut(
+                entry_ts=t.entry_ts.isoformat(),
+                exit_ts=t.exit_ts.isoformat() if t.exit_ts else None,
+                direction=t.direction,
+                entry_price=round(t.entry_price, 2),
+                exit_price=round(t.exit_price, 2) if t.exit_price else None,
+                pnl=round(t.pnl, 4) if t.pnl else None,
+                exit_reason=t.exit_reason,
+            )
+            for t in trades
+        ],
     )

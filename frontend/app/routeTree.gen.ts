@@ -9,9 +9,21 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as StrategyRouteImport } from './routes/strategy'
+import { Route as PaperRouteImport } from './routes/paper'
 import { Route as NewsRouteImport } from './routes/news'
 import { Route as IndexRouteImport } from './routes/index'
 
+const StrategyRoute = StrategyRouteImport.update({
+  id: '/strategy',
+  path: '/strategy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PaperRoute = PaperRouteImport.update({
+  id: '/paper',
+  path: '/paper',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const NewsRoute = NewsRouteImport.update({
   id: '/news',
   path: '/news',
@@ -26,31 +38,53 @@ const IndexRoute = IndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/news': typeof NewsRoute
+  '/paper': typeof PaperRoute
+  '/strategy': typeof StrategyRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/news': typeof NewsRoute
+  '/paper': typeof PaperRoute
+  '/strategy': typeof StrategyRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/news': typeof NewsRoute
+  '/paper': typeof PaperRoute
+  '/strategy': typeof StrategyRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/news'
+  fullPaths: '/' | '/news' | '/paper' | '/strategy'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/news'
-  id: '__root__' | '/' | '/news'
+  to: '/' | '/news' | '/paper' | '/strategy'
+  id: '__root__' | '/' | '/news' | '/paper' | '/strategy'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   NewsRoute: typeof NewsRoute
+  PaperRoute: typeof PaperRoute
+  StrategyRoute: typeof StrategyRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/strategy': {
+      id: '/strategy'
+      path: '/strategy'
+      fullPath: '/strategy'
+      preLoaderRoute: typeof StrategyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/paper': {
+      id: '/paper'
+      path: '/paper'
+      fullPath: '/paper'
+      preLoaderRoute: typeof PaperRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/news': {
       id: '/news'
       path: '/news'
@@ -71,6 +105,8 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   NewsRoute: NewsRoute,
+  PaperRoute: PaperRoute,
+  StrategyRoute: StrategyRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

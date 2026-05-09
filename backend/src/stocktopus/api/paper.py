@@ -166,3 +166,37 @@ async def paper_kill(
             "closed": [{"symbol": r.symbol, "order_id": r.order_id} for r in results],
             "count": len(results),
         }
+
+
+@paper_router.get("/trades")
+async def paper_trades(
+    limit: int = 50,
+    session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> list[dict[str, Any]]:
+    """Return recent paper trade journal entries."""
+    from sqlalchemy import desc, select
+
+    from stocktopus.db.models import PaperTrade
+
+    q = (
+        select(PaperTrade)
+        .order_by(desc(PaperTrade.entry_ts))
+        .limit(limit)
+    )
+    rows = (await session.execute(q)).scalars().all()
+    return [
+        {
+            "id": r.id,
+            "symbol": r.symbol,
+            "direction": r.direction,
+            "qty": r.qty,
+            "entry_price": r.entry_price,
+            "exit_price": r.exit_price,
+            "realized_pnl": float(r.realized_pnl) if r.realized_pnl is not None else None,
+            "regime": r.regime,
+            "entry_ts": r.entry_ts.isoformat(),
+            "exit_ts": r.exit_ts.isoformat() if r.exit_ts else None,
+            "status": "closed" if r.exit_ts else "open",
+        }
+        for r in rows
+    ]
