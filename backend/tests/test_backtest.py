@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock
 
 import pandas as pd
 import pytest
@@ -312,3 +313,126 @@ class TestBacktestRunner:
 
         # Net return with realistic friction ≤ zero-friction (friction reduces PnL)
         assert m_real.net_profit <= m_zero.net_profit
+
+
+# ── DriftChecker ──────────────────────────────────────────────────────────────
+
+
+class TestDriftChecker:
+    """Tests for the live vs backtest drift alarm."""
+
+    def _make_session(self, rows: list[dict]) -> AsyncMock:
+        from unittest.mock import MagicMock
+
+        session = AsyncMock()
+
+        class FakeRow:
+            def __init__(self, realized_pnl: float, regime: str) -> None:
+                self.realized_pnl = realized_pnl
+                self.regime = regime
+
+        fake_rows = [FakeRow(r["pnl"], r.get("regime", "trending_up")) for r in rows]
+        execute_result = MagicMock()
+        execute_result.fetchall.return_value = fake_rows
+        session.execute.return_value = execute_result
+        return session
+
+    @pytest.mark.asyncio
+    async def test_no_trades_returns_zero_metrics(self) -> None:
+        from stocktopus.backtest.drift import DriftChecker
+
+        checker = DriftChecker()
+        session = self._make_session([])
+        status = await checker.check(session)
+
+        assert status.live.n_trades == 0
+        assert not status.alarm_active
+
+    @pytest.mark.asyncio
+    async def test_good_distribution_no_alarm(self) -> None:
+        from stocktopus.backtest.drift import DriftChecker
+
+        # 6 wins of $10, 4 losses of $5 → win_rate=60%, PF=3.0
+        rows = [{"pnl": 10.0, "regime": "trending_up"}] * 6 + [
+            {"pnl": -5.0, "regime": "ranging"}
+        ] * 4
+        checker = DriftChecker(min_win_rate=0.40, min_profit_factor=1.0)
+        session = self._make_session(rows)
+        status = await checker.check(session)
+
+        assert not status.alarm_active
+        assert status.live.win_rate == pytest.approx(0.60)
+        assert status.live.profit_factor > 1.0
+
+    @pytest.mark.asyncio
+    async def test_low_win_rate_fires_alarm(self) -> None:
+        from stocktopus.backtest.drift import DriftChecker
+
+        # 3 wins, 7 losses → win_rate = 30%, below 40% threshold
+        rows = [{"pnl": 10.0, "regime": "trending_up"}] * 3 + [
+            {"pnl": -5.0, "regime": "ranging"}
+        ] * 7
+        checker = DriftChecker(min_win_rate=0.40, min_profit_factor=1.0)
+        session = self._make_session(rows)
+        status = await checker.check(session)
+
+        assert status.alarm_active
+        assert any("win_rate" in r for r in status.alarm_reasons)
+
+    @pytest.mark.asyncio
+    async def test_low_profit_factor_fires_alarm(self) -> None:
+        from stocktopus.backtest.drift import DriftChecker
+
+        # 5 wins of $2, 5 losses of $8 → PF = 10/40 = 0.25
+        rows = [{"pnl": 2.0, "regime": "trending_up"}] * 5 + [
+            {"pnl": -8.0, "regime": "ranging"}
+        ] * 5
+        checker = DriftChecker(min_win_rate=0.30, min_profit_factor=1.0)
+        session = self._make_session(rows)
+        status = await checker.check(session)
+
+        assert status.alarm_active
+        assert any("profit_factor" in r for r in status.alarm_reasons)
+
+    @pytest.mark.asyncio
+    async def test_insufficient_data_no_alarm(self) -> None:
+        from stocktopus.backtest.drift import DriftChecker
+
+        # Only 5 trades — below the 10-trade minimum
+        rows = [{"pnl": -5.0, "regime": "trending_up"}] * 5  # terrible but below min
+        checker = DriftChecker(min_win_rate=0.50, min_profit_factor=2.0)
+        session = self._make_session(rows)
+        status = await checker.check(session)
+
+        assert not status.alarm_active  # insufficient data, no alarm
+        assert not status.live.is_sufficient
+
+    @pytest.mark.asyncio
+    async def test_summary_returns_string(self) -> None:
+        from stocktopus.backtest.drift import DriftChecker
+
+        rows = [{"pnl": 10.0, "regime": "trending_up"}] * 6 + [
+            {"pnl": -5.0, "regime": "ranging"}
+        ] * 4
+        checker = DriftChecker()
+        session = self._make_session(rows)
+        status = await checker.check(session)
+
+        summary = status.summary()
+        assert isinstance(summary, str)
+        assert len(summary) > 0
+
+    @pytest.mark.asyncio
+    async def test_regimes_extracted_correctly(self) -> None:
+        from stocktopus.backtest.drift import DriftChecker
+
+        rows = (
+            [{"pnl": 5.0, "regime": "trending_up"}] * 4
+            + [{"pnl": 5.0, "regime": "ranging"}] * 4
+            + [{"pnl": -2.0, "regime": "high_volatility"}] * 2
+        )
+        checker = DriftChecker()
+        session = self._make_session(rows)
+        status = await checker.check(session)
+
+        assert set(status.live.regimes_seen) == {"trending_up", "ranging", "high_volatility"}

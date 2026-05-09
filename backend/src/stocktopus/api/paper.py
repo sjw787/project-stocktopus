@@ -101,6 +101,43 @@ async def paper_tick(
     return await trader.tick()
 
 
+@paper_router.get("/drift")
+async def paper_drift(
+    days: int = 30,
+    min_win_rate: float = 0.40,
+    min_pf: float = 1.0,
+    session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> dict[str, Any]:
+    """Check live paper trade distribution against alarm thresholds."""
+    from stocktopus.backtest.drift import DriftChecker
+
+    checker = DriftChecker(
+        min_win_rate=min_win_rate,
+        min_profit_factor=min_pf,
+        lookback_days=days,
+    )
+    status = await checker.check(session)
+    m = status.live
+
+    return {
+        "checked_at": status.checked_at.isoformat(),
+        "alarm_active": status.alarm_active,
+        "alarm_reasons": status.alarm_reasons,
+        "n_trades": m.n_trades,
+        "win_rate": round(m.win_rate, 4),
+        "avg_win": round(m.avg_win, 4),
+        "avg_loss": round(m.avg_loss, 4),
+        "profit_factor": round(m.profit_factor, 4) if m.profit_factor != float("inf") else None,
+        "expectancy": round(m.expectancy, 4),
+        "regimes_seen": m.regimes_seen,
+        "thresholds": {
+            "min_win_rate": min_win_rate,
+            "min_profit_factor": min_pf,
+            "lookback_days": days,
+        },
+    }
+
+
 @paper_router.post("/kill")
 async def paper_kill(
     symbol: str | None = None,

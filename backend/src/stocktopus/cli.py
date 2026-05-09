@@ -997,5 +997,57 @@ def paper_status_cmd() -> None:
     asyncio.run(_run())
 
 
+@paper.command("drift")
+@click.option("--days", default=30, show_default=True, help="Lookback window in calendar days")
+@click.option("--min-win-rate", default=0.40, show_default=True)
+@click.option("--min-pf", default=1.0, show_default=True, help="Min profit factor")
+def paper_drift_cmd(days: int, min_win_rate: float, min_pf: float) -> None:
+    """Check live paper trade distribution against alarm thresholds.
+
+    \b
+    Example:
+        stocktopus paper drift --days 30
+        stocktopus paper drift --min-win-rate 0.45 --min-pf 1.2
+    """
+    from stocktopus.backtest.drift import DriftChecker
+
+    checker = DriftChecker(
+        min_win_rate=min_win_rate,
+        min_profit_factor=min_pf,
+        lookback_days=days,
+    )
+
+    async def _run() -> None:
+        async with AsyncSessionFactory() as session:
+            status = await checker.check(session)
+            m = status.live
+
+            click.echo("\nDrift Check")
+            click.echo("=" * 44)
+            click.echo(f"  Lookback:         {days} days")
+            click.echo(f"  Sample trades:    {m.n_trades}")
+            click.echo()
+            if m.n_trades == 0:
+                click.echo("  No completed trades in window.")
+            else:
+                click.echo(f"  Win rate:         {m.win_rate:.1%}  (threshold ≥{min_win_rate:.1%})")
+                click.echo(f"  Profit factor:    {m.profit_factor:.2f}  (threshold ≥{min_pf:.2f})")
+                click.echo(f"  Expectancy:       ${m.expectancy:.2f} / trade")
+                click.echo(f"  Avg win:          ${m.avg_win:.2f}")
+                click.echo(f"  Avg loss:         ${m.avg_loss:.2f}")
+                click.echo(f"  Regimes seen:     {', '.join(m.regimes_seen) or 'none'}")
+            click.echo()
+
+            if status.alarm_active:
+                click.echo(f"🚨  ALARM: {'; '.join(status.alarm_reasons)}")
+                click.echo("    Consider pausing new entries until distribution recovers.")
+            elif m.n_trades < 10:
+                click.echo("⏳  Insufficient data — need ≥10 completed trades.")
+            else:
+                click.echo("✅  Distribution within acceptable thresholds.")
+
+    asyncio.run(_run())
+
+
 if __name__ == "__main__":
     main()
