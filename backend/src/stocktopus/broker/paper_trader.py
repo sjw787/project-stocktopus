@@ -15,7 +15,7 @@ from the CLI or an APScheduler job.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from loguru import logger
@@ -172,7 +172,10 @@ class PaperTrader:
 
     async def tick(self) -> dict[str, Any]:
         """Run one decision cycle. Returns a status dict for logging/API."""
+        settings = get_settings()
         ts = datetime.now(UTC)
+        if settings.clock_offset_hours:
+            ts += timedelta(hours=settings.clock_offset_hours)
         result: dict[str, Any] = {
             "ts": ts.isoformat(),
             "symbol": self._symbol,
@@ -234,7 +237,6 @@ class PaperTrader:
             return result
 
         # 6. Place order
-        settings = get_settings()
         qty = max(1, int(settings.max_position_usd / thesis.entry_price))
         order_req = OrderRequest(
             symbol=self._symbol,

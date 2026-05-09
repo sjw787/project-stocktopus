@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     # Universe
     allowed_symbols: list[str] = Field(default=["SPY"])
 
+    # Debug / testing
+    # Shift "now" by N hours — e.g. CLOCK_OFFSET_HOURS=-12 to simulate midday during off-hours.
+    clock_offset_hours: int = 0
+
     @property
     def is_production(self) -> bool:
         return self.env == "production"
