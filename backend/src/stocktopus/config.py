@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     alpaca_api_key: str = ""
     alpaca_secret_key: str = ""
     alpaca_base_url: str = "https://paper-api.alpaca.markets"
+    # Data feed: "iex" for legacy free accounts; "sip" for paid; leave blank to let
+    # Alpaca pick the right default for the account type (recommended for new accounts).
+    alpaca_data_feed: str = ""
 
     # News Providers
     finnhub_api_key: str = ""
@@ -42,6 +45,7 @@ class Settings(BaseSettings):
     # Trading Safety Caps (Phase 9)
     max_position_usd: float = 50.0
     max_daily_loss_usd: float = 25.0
+    max_trades_per_day: int = 5
     no_overnight_holds: bool = True
     no_leverage: bool = True
 

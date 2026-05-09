@@ -13,10 +13,12 @@ import click
 
 from stocktopus.config import get_settings
 from stocktopus.db.engine import AsyncSessionFactory
+from stocktopus.features.snapshot import backfill_market_context_signals, compute_and_persist
 from stocktopus.ingestion.alpaca_market_data import AlpacaMarketData
 from stocktopus.ingestion.candle_ingest import backfill
 from stocktopus.ingestion.context_ingest import snapshot_market_context
 from stocktopus.ingestion.quality import check_candle_quality
+from stocktopus.ingestion.yahoo_market_data import YahooFinanceMarketData
 from stocktopus.logging_config import configure_logging
 from stocktopus.universe import DEFAULT_UNIVERSE
 
@@ -57,12 +59,20 @@ def ingest() -> None:
     help="Timeframes to fetch (can be repeated)",
 )
 @click.option("--qqq-enabled", is_flag=True, default=False, help="Allow QQQ symbol")
+@click.option(
+    "--provider",
+    type=click.Choice(["alpaca", "yahoo"], case_sensitive=False),
+    default="yahoo",
+    show_default=True,
+    help="Data provider. 'yahoo' is free and requires no credentials.",
+)
 def backfill_cmd(
     symbol: str,
     from_date: str,
     to_date: str | None,
     timeframe: tuple[str, ...],
     qqq_enabled: bool,
+    provider: str,
 ) -> None:
     """Backfill historical candles for a symbol."""
     settings = get_settings()
@@ -76,16 +86,20 @@ def backfill_cmd(
         else datetime.now(tz=UTC)
     )
 
-    provider = AlpacaMarketData(
-        api_key=settings.alpaca_api_key,
-        secret_key=settings.alpaca_secret_key,
-    )
+    if provider == "alpaca":
+        data_provider = AlpacaMarketData(
+            api_key=settings.alpaca_api_key,
+            secret_key=settings.alpaca_secret_key,
+            data_feed=settings.alpaca_data_feed,
+        )
+    else:
+        data_provider = YahooFinanceMarketData()
 
     async def _run() -> None:
         async with AsyncSessionFactory() as session:
             results = await backfill(
                 session,
-                provider,
+                data_provider,
                 symbol=symbol.upper(),
                 start=start,
                 end=end,
@@ -94,7 +108,9 @@ def backfill_cmd(
         for tf, count in results.items():
             click.echo(f"  {tf}: {count} rows inserted")
 
-    click.echo(f"Backfilling {symbol.upper()} from {from_date} to {to_date or 'today'}...")
+    click.echo(
+        f"Backfilling {symbol.upper()} from {from_date} to {to_date or 'today'} via {provider}..."
+    )
     asyncio.run(_run())
     click.echo("Done.")
 
@@ -154,6 +170,7 @@ def context_cmd(at_time: str | None) -> None:
     provider = AlpacaMarketData(
         api_key=settings.alpaca_api_key,
         secret_key=settings.alpaca_secret_key,
+        data_feed=settings.alpaca_data_feed,
     )
 
     async def _run() -> None:
@@ -174,8 +191,366 @@ def context_cmd(at_time: str | None) -> None:
     click.echo("Done.")
 
 
+@cli.group()
+def features() -> None:
+    """Feature computation commands."""
+
+
+@features.command("compute")
+@click.option("--symbol", default="SPY", show_default=True, help="Ticker symbol")
+@click.option(
+    "--at",
+    "at_ts",
+    default=None,
+    metavar="YYYY-MM-DDTHH:MM:SS",
+    help="Timestamp to compute at (default: now UTC)",
+)
+def compute_features_cmd(symbol: str, at_ts: str | None) -> None:
+    """Compute and persist a feature snapshot for SYMBOL at a given timestamp."""
+
+    ts: datetime | None = None
+    if at_ts:
+        ts = datetime.fromisoformat(at_ts).replace(tzinfo=UTC)
+
+    async def _run() -> None:
+        async with AsyncSessionFactory() as session:
+            fv = await compute_and_persist(session, symbol, ts=ts)
+        click.echo(f"Symbol:      {fv.symbol}  ts: {fv.ts.isoformat()}")
+        click.echo(f"Close:       {fv.close:.4f}")
+        click.echo(f"SMA20d:      {fv.sma_20d}  SMA50d: {fv.sma_50d}  SMA200d: {fv.sma_200d}")
+        click.echo(
+            f"ATR(14d):    {fv.atr_14d}  ({fv.atr_pct:.2f}%)"
+            if fv.atr_pct
+            else f"ATR(14d): {fv.atr_14d}"
+        )
+        click.echo(f"VWAP:        {fv.vwap}  above={fv.above_vwap}")
+        click.echo(f"RVOL:        {fv.rvol}")
+        click.echo(f"Trend(1d):   {fv.trend_1d}  gap%: {fv.gap_pct}")
+
+    asyncio.run(_run())
+
+
+@features.command("backfill-context")
+@click.option("--symbol", default="SPY", show_default=True, help="Ticker symbol")
+@click.option(
+    "--batch",
+    default=500,
+    show_default=True,
+    type=int,
+    help="Rows per batch",
+)
+def backfill_context_cmd(symbol: str, batch: int) -> None:
+    """Back-fill spy_above_vwap and spy_trend_1d on existing market_context rows."""
+
+    async def _run() -> None:
+        total = 0
+        while True:
+            async with AsyncSessionFactory() as session:
+                n = await backfill_market_context_signals(session, symbol, batch_size=batch)
+            if n == 0:
+                break
+            total += n
+            click.echo(f"  updated {total} rows so far...")
+        click.echo(f"Done. Total rows updated: {total}")
+
+    asyncio.run(_run())
+
+
 def main() -> None:
     cli()
+
+
+# ── db commands ────────────────────────────────────────────────────────────────
+
+
+@cli.group()
+def db() -> None:
+    """Database maintenance commands."""
+
+
+_PURGEABLE_TABLES = {
+    "candles": "candles",
+    "feature_snapshots": "feature_snapshots",
+    "llm_logs": "llm_logs",
+    "market_context": "market_context",
+    "news_events": "news_events",
+    "trade_lots": "trade_lots",
+    "trade_rejections": "trade_rejections",
+}
+
+
+@db.command("status")
+def db_status_cmd() -> None:
+    """Show row counts for all data tables."""
+    from sqlalchemy import text
+
+    _STATUS_TABLES = [
+        "candles",
+        "feature_snapshots",
+        "llm_logs",
+        "market_context",
+        "news_events",
+        "trade_lots",
+        "trade_rejections",
+    ]
+
+    async def _run() -> None:
+        async with AsyncSessionFactory() as session:
+            click.echo(f"{'Table':<24} {'Rows':>10}")
+            click.echo("-" * 36)
+            for tbl in _STATUS_TABLES:
+                result = await session.execute(text(f"SELECT COUNT(*) FROM {tbl}"))  # noqa: S608
+                count = result.scalar_one()
+                click.echo(f"{tbl:<24} {count:>10,}")
+
+    asyncio.run(_run())
+
+
+@db.command("purge")
+@click.option(
+    "--table",
+    type=click.Choice([*_PURGEABLE_TABLES, "all"], case_sensitive=False),
+    required=True,
+    help="Table to truncate, or 'all' to truncate every data table.",
+)
+@click.option(
+    "--symbol",
+    default=None,
+    help="Limit purge to this symbol (only honoured for 'candles' and 'feature_snapshots').",
+)
+@click.option("--yes", is_flag=True, default=False, help="Skip confirmation prompt.")
+def db_purge_cmd(table: str, symbol: str | None, yes: bool) -> None:
+    """Truncate one or all data tables.
+
+    \b
+    Examples:
+        stocktopus db purge --table all --yes
+        stocktopus db purge --table candles --symbol SPY
+    """
+    from sqlalchemy import text
+
+    tables = list(_PURGEABLE_TABLES.keys()) if table == "all" else [table]
+
+    summary = ", ".join(tables) + (f"  (symbol={symbol})" if symbol else "")
+    if not yes:
+        click.confirm(f"Purge data from: {summary}?", abort=True)
+
+    async def _run() -> None:
+        async with AsyncSessionFactory() as session:
+            for t in tables:
+                sql = (
+                    f"DELETE FROM {t} WHERE symbol = :sym"
+                    if (symbol and t in ("candles", "feature_snapshots"))
+                    else f"TRUNCATE TABLE {t} RESTART IDENTITY CASCADE"
+                )
+                sym_tables = ("candles", "feature_snapshots")
+                params = {"sym": symbol} if (symbol and t in sym_tables) else {}
+                result = await session.execute(text(sql), params)
+                rows = result.rowcount if sql.startswith("DELETE") else "all"
+                click.echo(f"  {t}: purged {rows} rows")
+            await session.commit()
+
+    asyncio.run(_run())
+    click.echo("Done.")
+
+
+# ── Analyze (LLM regime assessment) ─────────────────────────────────────────
+
+
+@cli.group()
+def analyze() -> None:
+    """LLM-powered regime analysis commands."""
+
+
+@analyze.command("regime")
+@click.option("--symbol", default="SPY", show_default=True, help="Ticker symbol")
+@click.option(
+    "--provider",
+    type=click.Choice(["openai", "anthropic"], case_sensitive=False),
+    default=None,
+    help="LLM provider (defaults to ACTIVE_LLM_PROVIDER in settings)",
+)
+@click.option("--model", default=None, help="Override model name")
+@click.option("--snapshot-id", default=None, help="Specific feature_snapshot UUID to analyze")
+def analyze_regime_cmd(
+    symbol: str,
+    provider: str | None,
+    model: str | None,
+    snapshot_id: str | None,
+) -> None:
+    """Run LLM regime assessment for a symbol using its latest feature snapshot."""
+    from stocktopus.llm.anthropic_provider import AnthropicProvider
+    from stocktopus.llm.openai_provider import OpenAIProvider
+    from stocktopus.llm.research_director import ResearchDirector
+
+    settings = get_settings()
+    active = (provider or settings.active_llm_provider).lower()
+
+    if active == "anthropic":
+        if not settings.anthropic_api_key:
+            click.echo("ERROR: ANTHROPIC_API_KEY not set in .env", err=True)
+            sys.exit(1)
+        llm = AnthropicProvider(api_key=settings.anthropic_api_key)
+    else:
+        if not settings.openai_api_key:
+            click.echo("ERROR: OPENAI_API_KEY not set in .env", err=True)
+            sys.exit(1)
+        llm = OpenAIProvider(api_key=settings.openai_api_key)
+
+    director = ResearchDirector(
+        llm=llm,
+        daily_budget_usd=settings.llm_daily_budget_usd,
+        model=model,
+    )
+
+    async def _run() -> None:
+        async with AsyncSessionFactory() as session:
+            assessment = await director.analyze(
+                session, symbol=symbol.upper(), feature_snapshot_id=snapshot_id
+            )
+        click.echo(f"\nRegime Assessment for {symbol.upper()}")
+        click.echo("=" * 40)
+        click.echo(f"  Regime:     {assessment.regime}")
+        click.echo(f"  Lean:       {assessment.lean}")
+        click.echo(f"  Confidence: {assessment.confidence}/10")
+        click.echo(f"  Model:      {assessment.model_used}")
+        click.echo(f"  Cost:       ${assessment.input_tokens * 0.0000015:.5f} (approx)")
+        click.echo(f"\nReasoning:\n{assessment.reasoning}")
+        click.echo("\nKey Risks:")
+        for risk in assessment.key_risks:
+            click.echo(f"  • {risk}")
+        click.echo(f"\nInvalidation:\n  {assessment.invalidation}")
+
+    asyncio.run(_run())
+
+
+# ── Strategy (signal evaluation) ─────────────────────────────────────────────
+
+
+@cli.group()
+def strategy() -> None:
+    """Trading strategy commands."""
+
+
+@strategy.command("evaluate")
+@click.option("--symbol", default="SPY", show_default=True, help="Ticker symbol")
+@click.option(
+    "--provider",
+    type=click.Choice(["openai", "anthropic"], case_sensitive=False),
+    default=None,
+    help="LLM provider (defaults to ACTIVE_LLM_PROVIDER in settings)",
+)
+@click.option("--model", default=None, help="Override model name")
+@click.option("--snapshot-id", default=None, help="Specific feature_snapshot UUID to analyze")
+def strategy_evaluate_cmd(
+    symbol: str,
+    provider: str | None,
+    model: str | None,
+    snapshot_id: str | None,
+) -> None:
+    """Evaluate opening momentum strategy signal for a symbol.
+
+    Runs the full pipeline: features → LLM regime → strategy signal → risk filter.
+    Prints the TradeThesis if a signal is generated, or explains why no trade was taken.
+    """
+
+    from sqlalchemy import desc, select
+
+    from stocktopus.db.models import FeatureSnapshot
+    from stocktopus.features.models import FeatureVector
+    from stocktopus.llm.anthropic_provider import AnthropicProvider
+    from stocktopus.llm.openai_provider import OpenAIProvider
+    from stocktopus.llm.research_director import ResearchDirector
+    from stocktopus.risk.filter import RiskFilter
+    from stocktopus.strategies.base import StrategyContext
+    from stocktopus.strategies.opening_momentum import OpeningMomentumStrategy
+
+    settings = get_settings()
+    active = (provider or settings.active_llm_provider).lower()
+
+    if active == "anthropic":
+        if not settings.anthropic_api_key:
+            click.echo("ERROR: ANTHROPIC_API_KEY not set in .env", err=True)
+            sys.exit(1)
+        llm = AnthropicProvider(api_key=settings.anthropic_api_key)
+    else:
+        if not settings.openai_api_key:
+            click.echo("ERROR: OPENAI_API_KEY not set in .env", err=True)
+            sys.exit(1)
+        llm = OpenAIProvider(api_key=settings.openai_api_key)
+
+    director = ResearchDirector(
+        llm=llm,
+        daily_budget_usd=settings.llm_daily_budget_usd,
+        model=model,
+    )
+    strat = OpeningMomentumStrategy()
+    risk = RiskFilter.from_settings(
+        max_position_usd=settings.max_position_usd,
+        max_daily_loss_usd=settings.max_daily_loss_usd,
+        max_trades_per_day=settings.max_trades_per_day,
+    )
+
+    async def _run() -> None:
+        async with AsyncSessionFactory() as session:
+            # 1. Get LLM regime assessment (reuses cached if recent)
+            assessment = await director.analyze(
+                session, symbol=symbol.upper(), feature_snapshot_id=snapshot_id
+            )
+
+            # 2. Load latest feature snapshot
+            q = (
+                select(FeatureSnapshot)
+                .where(FeatureSnapshot.symbol == symbol.upper())
+                .order_by(desc(FeatureSnapshot.ts))
+                .limit(1)
+            )
+            row = (await session.execute(q)).scalar_one_or_none()
+            if row is None:
+                click.echo(f"No feature snapshots found for {symbol.upper()}.", err=True)
+                return
+
+            fv = FeatureVector(**row.features)
+
+            # 3. Build context and run strategy
+            ctx = StrategyContext(
+                symbol=symbol.upper(),
+                ts=row.ts,
+                features=fv,
+                regime=assessment,
+            )
+            thesis = strat.evaluate(ctx)
+
+        click.echo(f"\nStrategy Evaluation for {symbol.upper()}")
+        click.echo("=" * 44)
+
+        if thesis is None:
+            click.echo("  Signal: NO TRADE — entry conditions not met.")
+            click.echo(f"  Regime: {assessment.regime} / {assessment.lean} "
+                       f"@ {assessment.confidence}/10")
+            return
+
+        # 4. Run risk filter
+        filter_result = risk.evaluate(ctx, thesis)
+
+        if filter_result.approved:
+            click.echo("  Signal:     TRADE SIGNAL ✓")
+        else:
+            click.echo("  Signal:     BLOCKED by risk filter ✗")
+
+        click.echo(f"  Direction:  {thesis.direction}")
+        click.echo(f"  Entry:      ${thesis.entry_price:.2f}")
+        click.echo(f"  Stop:       ${thesis.stop_loss:.2f}")
+        click.echo(f"  Take-Profit:${thesis.take_profit:.2f}")
+        click.echo(f"  R/R:        {thesis.risk_reward:.2f}x" if thesis.risk_reward else "")
+        click.echo(f"\nRationale:\n  {thesis.rationale}")
+
+        if not filter_result.approved:
+            click.echo("\nRisk Rejections:")
+            for r in filter_result.rejections:
+                click.echo(f"  ✗ [{r.check_name}] {r.reason}")
+
+    asyncio.run(_run())
 
 
 if __name__ == "__main__":

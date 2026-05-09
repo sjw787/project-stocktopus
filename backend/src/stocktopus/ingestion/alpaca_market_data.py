@@ -44,10 +44,12 @@ class AlpacaMarketData(MarketDataProvider):
     Uses alpaca-py for both historical REST and live websocket candles.
     """
 
-    def __init__(self, api_key: str, secret_key: str) -> None:
+    def __init__(self, api_key: str, secret_key: str, data_feed: str = "") -> None:
         self._client = StockHistoricalDataClient(api_key, secret_key)
         self._api_key = api_key
         self._secret_key = secret_key
+        # Empty string → omit feed param so Alpaca uses the account default.
+        self._data_feed: str | None = data_feed or None
 
     async def get_candles(
         self,
@@ -65,9 +67,12 @@ class AlpacaMarketData(MarketDataProvider):
             timeframe=tf,
             start=start,
             end=end,
-            feed="iex",  # free tier; swap to "sip" for paid Alpaca plans
+            **( {"feed": self._data_feed} if self._data_feed else {}),
         )
-        logger.debug("Fetching candles", symbol=symbol, tf=timeframe, start=start, end=end)
+        logger.debug(
+            "Fetching candles",
+            symbol=symbol, tf=timeframe, start=start, end=end, feed=self._data_feed,
+        )
         # Alpaca's historical client is synchronous; run in thread to avoid blocking the loop.
         bars = await asyncio.to_thread(self._client.get_stock_bars, request)
         if symbol not in bars:

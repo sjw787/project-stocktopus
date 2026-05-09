@@ -48,6 +48,14 @@ async def backfill(
             candles = await provider.get_candles(symbol, tf, cursor, batch_end)
             if candles:
                 inserted += await _upsert_candles(session, candles)
+            else:
+                logger.warning(
+                    "API returned 0 bars for window",
+                    symbol=symbol,
+                    tf=tf,
+                    start=cursor.date(),
+                    end=batch_end.date(),
+                )
             cursor = batch_end
         results[tf] = inserted
         logger.info("Backfill complete", symbol=symbol, tf=tf, inserted=inserted)
@@ -76,7 +84,9 @@ async def _upsert_candles(session: AsyncSession, candles: list[Candle]) -> int:
     ]
 
     stmt = (
-        insert(CandleRow).values(rows).on_conflict_do_nothing(constraint="uq_candles_symbol_tf_ts")
+        insert(CandleRow)
+        .values(rows)
+        .on_conflict_do_nothing(index_elements=["symbol", "timeframe", "ts"])
     )
     result = await session.execute(stmt)
     await session.commit()

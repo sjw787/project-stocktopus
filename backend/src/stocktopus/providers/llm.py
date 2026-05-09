@@ -16,6 +16,7 @@ class LLMResponse(BaseModel):
     prompt_tokens: int
     completion_tokens: int
     cost_usd: float
+    latency_ms: int = 0
 
 
 class LLMProvider(ABC):

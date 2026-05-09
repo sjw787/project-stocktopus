@@ -1,0 +1,71 @@
+# Opening Momentum Strategy — v1 Configuration
+#
+# All numeric thresholds live here so they can be tuned without code changes.
+# Units are documented inline.
+
+strategy:
+  name: opening_momentum
+  version: v1
+  direction: long_only   # live/paper starts long-only; backtest may try both
+
+# ── Entry filters (ALL must pass) ────────────────────────────────────────────
+entry:
+  # Minimum gap-up percentage from prior close to today's open.
+  min_gap_pct: 0.5             # %
+
+  # Minimum relative volume vs 20-day average at the same bar.
+  min_rvol: 1.5
+
+  # SPY must be above intraday VWAP after the first candle window.
+  require_above_vwap: true
+
+  # News sentiment: require net-positive headlines in the morning window
+  # (prior regular-session close through 9:30 ET).
+  require_positive_news_sentiment: false  # off until news scoring is live
+
+  # Minimum LLM regime confidence to allow entry.
+  min_llm_confidence: 5
+
+  # LLM lean must be one of these values to enter.
+  allowed_llm_leans:
+    - long
+
+  # Earliest entry time after market open (minutes).
+  earliest_entry_minutes_after_open: 5
+
+  # Latest entry time before market close (minutes).
+  latest_entry_minutes_before_close: 60
+
+# ── Entry execution ───────────────────────────────────────────────────────────
+entry_execution:
+  # Enter on first pullback that holds VWAP (price must retrace to within
+  # pullback_vwap_tolerance_pct of VWAP before re-touching it).
+  pullback_entry: true
+  pullback_vwap_tolerance_pct: 0.1   # % below VWAP allowed for "touch"
+
+# ── Exit parameters ───────────────────────────────────────────────────────────
+exit:
+  # Stop loss as a percentage below entry price.
+  stop_loss_pct: 0.5            # %
+
+  # Baseline take-profit as a percentage above entry price.
+  take_profit_pct: 1.0          # %
+
+  # Dynamic TP extension: when LLM confidence >= this value AND trend confirms,
+  # extend the TP to take_profit_extended_pct.
+  dynamic_tp_min_confidence: 8
+  take_profit_extended_pct: 1.5  # %
+
+# ── Allowed market regimes ────────────────────────────────────────────────────
+allowed_regimes:
+  - trending_up
+  - ranging          # allowed but with standard TP only
+
+# ── Event window overrides ────────────────────────────────────────────────────
+# When a high-impact event is within the window, widen stops and reduce size
+# so max dollar risk stays the same.
+event_window:
+  minutes_before: 30
+  minutes_after: 60
+  stop_loss_multiplier: 1.5     # widen stop by this factor
+  size_multiplier: 0.67         # reduce position size proportionally

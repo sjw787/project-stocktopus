@@ -161,3 +161,85 @@ class TradeLot(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     feature_snapshot: Mapped["FeatureSnapshot | None"] = relationship("FeatureSnapshot")
+
+
+# ── LLM Logs ──────────────────────────────────────────────────────────────────
+
+
+class LLMLog(Base):
+    """Replay log for every LLM prompt/response pair.
+
+    Persisted immediately after each LLM call regardless of parse outcome,
+    enabling offline replay, cost audit, and training-data generation.
+    """
+
+    __tablename__ = "llm_logs"
+    __table_args__ = (
+        Index("ix_llm_logs_symbol_ts", "symbol", "ts"),
+        Index("ix_llm_logs_ts", "ts"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    symbol: Mapped[str] = mapped_column(String(16), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(16), nullable=False, default="v1")
+    model: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    user_prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    raw_response: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    parsed_ok: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    regime_assessment: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    feature_snapshot_id: Mapped[str | None] = mapped_column(
+        ForeignKey("feature_snapshots.id"), nullable=True
+    )
+    prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    completion_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    feature_snapshot: Mapped["FeatureSnapshot | None"] = relationship(
+        "FeatureSnapshot", foreign_keys=[feature_snapshot_id]
+    )
+
+
+# ── Trade Rejections ──────────────────────────────────────────────────────────
+
+
+class TradeRejection(Base):
+    """Audit log for every trade blocked by the risk filter.
+
+    Stored immediately when RiskFilter.evaluate() returns approved=False.
+    """
+
+    __tablename__ = "trade_rejections"
+    __table_args__ = (
+        Index("ix_trade_rejections_symbol_ts", "symbol", "ts"),
+        Index("ix_trade_rejections_ts", "ts"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    symbol: Mapped[str] = mapped_column(String(16), nullable=False)
+    strategy_name: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    strategy_version: Mapped[str] = mapped_column(String(16), nullable=False, default="v1")
+
+    # First failing check (for quick filtering)
+    check_name: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    # Full list of check results serialised as JSONB
+    check_results: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+
+    # The proposed thesis that was rejected
+    thesis_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    feature_snapshot_id: Mapped[str | None] = mapped_column(
+        ForeignKey("feature_snapshots.id"), nullable=True
+    )
+    feature_snapshot: Mapped["FeatureSnapshot | None"] = relationship(
+        "FeatureSnapshot", foreign_keys=[feature_snapshot_id]
+    )
