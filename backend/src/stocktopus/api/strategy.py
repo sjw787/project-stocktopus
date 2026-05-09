@@ -238,11 +238,11 @@ class BacktestRequest(BaseModel):
 
 class BacktestTradeOut(BaseModel):
     entry_ts: str
-    exit_ts: str | None
-    direction: str
+    exit_ts: str
+    lean: str
     entry_price: float
-    exit_price: float | None
-    pnl: float | None
+    exit_price: float
+    net_pnl: float
     exit_reason: str
 
 
@@ -355,10 +355,10 @@ async def run_backtest(
     )
     trades, metrics = runner.run()
 
-    n_wins = sum(1 for t in trades if t.pnl and t.pnl > 0)
-    n_losses = sum(1 for t in trades if t.pnl and t.pnl < 0)
-    avg_win = sum(t.pnl for t in trades if t.pnl and t.pnl > 0) / max(1, n_wins)
-    avg_loss = sum(t.pnl for t in trades if t.pnl and t.pnl < 0) / max(1, n_losses)
+    n_wins = sum(1 for t in trades if t.net_pnl > 0)
+    n_losses = sum(1 for t in trades if t.net_pnl < 0)
+    avg_win = sum(t.net_pnl for t in trades if t.net_pnl > 0) / max(1, n_wins)
+    avg_loss = sum(t.net_pnl for t in trades if t.net_pnl < 0) / max(1, n_losses)
 
     return BacktestResponse(
         symbol=sym,
@@ -378,12 +378,12 @@ async def run_backtest(
         trades=[
             BacktestTradeOut(
                 entry_ts=t.entry_ts.isoformat(),
-                exit_ts=t.exit_ts.isoformat() if t.exit_ts else None,
-                direction=t.direction,
+                exit_ts=t.exit_ts.isoformat(),
+                lean=t.lean,
                 entry_price=round(t.entry_price, 2),
-                exit_price=round(t.exit_price, 2) if t.exit_price else None,
-                pnl=round(t.pnl, 4) if t.pnl else None,
-                exit_reason=t.exit_reason,
+                exit_price=round(t.exit_price, 2),
+                net_pnl=round(t.net_pnl, 4),
+                exit_reason=str(t.exit_reason.value),
             )
             for t in trades
         ],

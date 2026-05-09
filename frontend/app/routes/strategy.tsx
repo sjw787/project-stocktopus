@@ -217,16 +217,16 @@ function BacktestResults({ result }: { result: BacktestResult }) {
                     <td className="py-1 pr-3" style={{ color: "var(--text-muted)" }}>
                       {new Date(t.entry_ts).toLocaleDateString()}
                     </td>
-                    <td className="py-1 pr-3" style={{ color: t.direction === "long" ? "var(--green)" : "var(--red)" }}>
-                      {t.direction.toUpperCase()}
+                    <td className="py-1 pr-3" style={{ color: t.lean === "long" ? "var(--green)" : "var(--red)" }}>
+                      {t.lean.toUpperCase()}
                     </td>
                     <td className="text-right py-1 pr-3">{t.entry_price.toFixed(2)}</td>
-                    <td className="text-right py-1 pr-3">{t.exit_price?.toFixed(2) ?? "—"}</td>
+                    <td className="text-right py-1 pr-3">{t.exit_price.toFixed(2)}</td>
                     <td
                       className="text-right py-1 pr-3 font-semibold"
-                      style={{ color: (t.pnl ?? 0) >= 0 ? "var(--green)" : "var(--red)" }}
+                      style={{ color: t.net_pnl >= 0 ? "var(--green)" : "var(--red)" }}
                     >
-                      {t.pnl != null ? `$${t.pnl.toFixed(2)}` : "—"}
+                      {`$${t.net_pnl.toFixed(2)}`}
                     </td>
                     <td className="py-1 text-xs" style={{ color: "var(--text-muted)" }}>{t.exit_reason}</td>
                   </tr>

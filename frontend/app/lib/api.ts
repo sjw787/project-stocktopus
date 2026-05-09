@@ -107,11 +107,11 @@ export interface BacktestResult {
 
 export interface BacktestTrade {
   entry_ts: string;
-  exit_ts: string | null;
-  direction: string;
+  exit_ts: string;
+  lean: string;
   entry_price: number;
-  exit_price: number | null;
-  pnl: number | null;
+  exit_price: number;
+  net_pnl: number;
   exit_reason: string;
 }
 
