@@ -337,9 +337,10 @@ async def run_backtest(
     neutral = RegimeAssessment(
         regime=Regime.TRENDING_UP,
         lean=TradeLean.LONG,
-        confidence=60,
-        reasoning="Offline backtest — neutral regime assumed",
+        confidence=7,
+        reasoning="Offline backtest — neutral regime assumed.",
         key_risks=[],
+        invalidation="N/A — offline backtest uses a fixed neutral regime.",
     )
     regime_map = {
         d: neutral
