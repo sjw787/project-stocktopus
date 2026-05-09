@@ -13,7 +13,7 @@ POST /api/strategy/backtest
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -273,10 +273,14 @@ async def run_backtest(
 ) -> BacktestResponse:
     """Run a quick offline backtest against stored candle data."""
 
+
     from stocktopus.backtest.runner import BacktestRunner
     from stocktopus.features.models import Regime, TradeLean
 
     sym = req.symbol.upper()
+
+    start_dt = datetime.fromisoformat(req.start).replace(tzinfo=UTC)
+    end_dt = datetime.fromisoformat(req.end).replace(tzinfo=UTC)
 
     # Load intraday bars
     q_5m = (
@@ -284,8 +288,8 @@ async def run_backtest(
         .where(
             Candle.symbol == sym,
             Candle.timeframe == req.timeframe,
-            Candle.ts >= req.start,
-            Candle.ts < req.end,
+            Candle.ts >= start_dt,
+            Candle.ts < end_dt,
         )
         .order_by(Candle.ts)
     )
@@ -305,8 +309,8 @@ async def run_backtest(
         .where(
             Candle.symbol == sym,
             Candle.timeframe == "1d",
-            Candle.ts >= req.start,
-            Candle.ts < req.end,
+            Candle.ts >= start_dt,
+            Candle.ts < end_dt,
         )
         .order_by(Candle.ts)
     )
