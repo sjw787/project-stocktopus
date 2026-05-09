@@ -23,7 +23,7 @@ paper_router = APIRouter(prefix="/api/paper", tags=["paper"])
 async def paper_status(
     session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> dict[str, Any]:
-    """Return Phase 8 gating progress: completed trade count and regimes covered."""
+    """Return Phase 8 gating progress plus live P&L summary."""
     total_result = await session.execute(
         text("SELECT COUNT(*) FROM paper_trades WHERE exit_ts IS NOT NULL")
     )
@@ -37,15 +37,37 @@ async def paper_status(
     )
     regimes = [{"regime": r, "count": c} for r, c in regime_result.fetchall()]
 
+    open_result = await session.execute(
+        text("SELECT COUNT(*) FROM paper_trades WHERE exit_ts IS NULL")
+    )
+    open_positions: int = open_result.scalar_one()
+
+    pnl_result = await session.execute(
+        text(
+            "SELECT "
+            "  COALESCE(SUM(CASE WHEN exit_ts::date = CURRENT_DATE "
+            "    THEN realized_pnl END), 0) AS daily, "
+            "  COALESCE(SUM(realized_pnl), 0) AS total "
+            "FROM paper_trades WHERE exit_ts IS NOT NULL AND realized_pnl IS NOT NULL"
+        )
+    )
+    pnl_row = pnl_result.fetchone()
+    daily_pnl = float(pnl_row[0]) if pnl_row else 0.0
+    total_pnl = float(pnl_row[1]) if pnl_row else 0.0
+
     gate_passed = total >= 100 and len(regimes) >= 3
 
     return {
-        "completed_trades": total,
+        "trades_completed": total,
+        "regimes_seen": len(regimes),
         "regimes": regimes,
-        "distinct_regimes": len(regimes),
-        "gate_passed": gate_passed,
+        "phase8_gate": gate_passed,
         "required_trades": 100,
         "required_regimes": 3,
+        "open_positions": open_positions,
+        "daily_pnl": daily_pnl,
+        "total_pnl": total_pnl,
+        "kill_switch_active": False,
     }
 
 
