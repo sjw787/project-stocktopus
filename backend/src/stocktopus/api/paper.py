@@ -14,7 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from stocktopus.config import Settings, get_settings
-from stocktopus.db.session import get_session
+from stocktopus.db.engine import get_session
 
 paper_router = APIRouter(prefix="/api/paper", tags=["paper"])
 

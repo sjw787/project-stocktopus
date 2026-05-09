@@ -15,7 +15,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from stocktopus.config import Settings, get_settings
-from stocktopus.db.engine import get_db_session
+from stocktopus.db.engine import get_session as get_db_session
 from stocktopus.db.models import FeatureSnapshot
 from stocktopus.features.models import FeatureVector, RegimeAssessment
 from stocktopus.llm.research_director import ResearchDirector
