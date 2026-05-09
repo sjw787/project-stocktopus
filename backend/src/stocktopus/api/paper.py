@@ -163,31 +163,61 @@ async def paper_drift(
 @paper_router.post("/kill")
 async def paper_kill(
     symbol: str | None = None,
+    session: AsyncSession = Depends(get_session),  # noqa: B008
     settings: Settings = Depends(get_settings),  # noqa: B008
 ) -> dict[str, Any]:
-    """Kill switch: flatten all paper positions (or a single symbol)."""
-    from stocktopus.broker.alpaca_adapter import AlpacaBrokerAdapter
+    """Kill switch: flatten all paper positions (or a single symbol).
 
-    if not settings.alpaca_api_key or not settings.alpaca_secret_key:
-        raise HTTPException(status_code=503, detail="Alpaca credentials not configured")
+    Closes open paper_trades records in the DB (covers dry-run trades) and,
+    if Alpaca credentials are present, also closes any live broker positions.
+    """
+    from datetime import UTC, datetime
 
-    broker = AlpacaBrokerAdapter(
-        api_key=settings.alpaca_api_key,
-        secret_key=settings.alpaca_secret_key,
-        paper=True,
-    )
+    from sqlalchemy import select
 
+    from stocktopus.db.models import PaperTrade
+
+    now = datetime.now(UTC)
+
+    # ── 1. Close open DB records ──────────────────────────────────────────────
+    q = select(PaperTrade).where(PaperTrade.exit_ts.is_(None))
     if symbol:
-        result = await broker.close_position(symbol.upper())
-        if result is None:
-            return {"closed": [], "message": f"No open position for {symbol.upper()}"}
-        return {"closed": [{"symbol": result.symbol, "order_id": result.order_id}]}
-    else:
-        results = await broker.close_all_positions()
-        return {
-            "closed": [{"symbol": r.symbol, "order_id": r.order_id} for r in results],
-            "count": len(results),
-        }
+        q = q.where(PaperTrade.symbol == symbol.upper())
+    open_trades = (await session.execute(q)).scalars().all()
+
+    db_closed = []
+    for trade in open_trades:
+        trade.exit_ts = now
+        trade.exit_price = trade.entry_price  # use entry as exit (no live price at kill time)
+        trade.realized_pnl = 0.0
+        db_closed.append({"id": str(trade.id), "symbol": trade.symbol})
+
+    if open_trades:
+        await session.commit()
+
+    # ── 2. Close Alpaca broker positions (live/paper brokerage) ───────────────
+    broker_closed: list[dict[str, str]] = []
+    if settings.alpaca_api_key and settings.alpaca_secret_key:
+        from stocktopus.broker.alpaca_adapter import AlpacaBrokerAdapter
+
+        broker = AlpacaBrokerAdapter(
+            api_key=settings.alpaca_api_key,
+            secret_key=settings.alpaca_secret_key,
+            paper=True,
+        )
+        if symbol:
+            result = await broker.close_position(symbol.upper())
+            if result:
+                broker_closed.append({"symbol": result.symbol, "order_id": result.order_id})
+        else:
+            results = await broker.close_all_positions()
+            broker_closed = [{"symbol": r.symbol, "order_id": r.order_id} for r in results]
+
+    return {
+        "db_closed": db_closed,
+        "broker_closed": broker_closed,
+        "count": len(db_closed) + len(broker_closed),
+    }
 
 
 @paper_router.get("/trades")
