@@ -211,7 +211,8 @@ class ResearchDirector:
                 "Run `stocktopus features compute --symbol {symbol}` first."
             )
 
-        fv = FeatureVector(**snap.features, symbol=symbol, ts=snap.ts)
+        fv_data = {k: v for k, v in snap.features.items() if k not in ("symbol", "ts")}
+        fv = FeatureVector(**fv_data, symbol=symbol, ts=snap.ts)
 
         # ── Context gathering ─────────────────────────────────────────────────
         news_summary = await _get_news_summary(session)
