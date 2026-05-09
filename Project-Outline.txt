@@ -1,0 +1,255 @@
+The key is to treat this like a research system first and a trading bot second.
+Most people fail because they jump directly to:
+“Predict price and make money.”
+A much better approach is:
+Build infrastructure
+Gather clean data
+Create repeatable evaluation
+Test simple hypotheses
+Slowly increase complexity
+With $500 and an LLM, your advantage is flexibility and iteration speed — not execution speed.
+
+Phase 1 — Define the Goal
+Your first objective should NOT be:
+maximize profit
+automate trading
+high-frequency trading
+Instead:
+“Can the system identify statistically favorable short-term setups better than random chance after fees?”
+That is measurable.
+
+Phase 2 — Pick a Narrow Market
+Start with ONLY:
+SPY
+optionally QQQ later
+Avoid:
+penny stocks
+options
+crypto initially
+leveraged ETFs
+Why SPY:
+clean behavior
+massive liquidity
+fewer random spikes
+easier to model
+
+Phase 3 — Data Sources
+You need 3 categories of data.
+1. Price/Volume Data
+Get:
+1 minute candles
+5 minute candles
+volume
+VWAP
+premarket data
+30 day moving average
+Yearly moving average
+Potential APIs:
+Alpaca
+Polygon.io
+Alpha Vantage
+
+2. News/Sentiment
+The LLM is strongest here.
+Examples:
+Fed news
+CPI reports
+earnings headlines
+unusual macro events
+Sources: research more sources
+Finnhub
+NewsAPI
+
+3. Market Context
+Track:
+VIX
+trend regime
+opening gap
+market breadth
+Research other areas to track
+The system should know:
+“Is this a trend day or chop day?”
+That matters enormously.
+
+Phase 4 — Build the Architecture
+Do NOT start with autonomous trading.
+Market Data
+    ↓
+Feature Extraction
+    ↓
+LLM Analysis Layer
+    ↓
+Trade Thesis
+    ↓
+Risk Filter
+    ↓
+Paper Trade
+    ↓
+Performance Tracking
+
+
+Phase 5 — Keep the AI’s Role Narrow
+This is critical.
+Do NOT ask the LLM:
+“Predict tomorrow’s price.”
+The LLM should ask these questions to itself before making trade decisions
+Instead ask:
+Is market sentiment bullish/bearish?
+Is volatility expanding?
+Is this setup historically dangerous?
+Summarize macro context
+Rank trade quality
+LLMs are much better at:
+contextual reasoning
+summarization
+filtering
+regime identification
+than raw numerical prediction.
+
+Phase 6 — First Strategy (Simple)
+Your first strategy should be extremely simple.
+Example:
+Opening Momentum Strategy
+Rules:
+SPY gaps up >0.5%
+Opening volume elevated
+Price above VWAP
+News sentiment positive
+Enter after first pullback
+Stop loss: 0.5%
+Take profit: 1% (Conditionally, if the market is showing strong signals, seek higher percentage, this should be configurable)
+The AI’s job:
+determine whether market conditions support the setup
+NOT:
+invent random trades
+
+Phase 7 — Backtesting
+This is where most projects break.
+You MUST include:
+slippage
+commissions
+realistic fills
+delayed entries
+failed trades
+Evaluate:
+win rate
+expectancy
+max drawdown
+Sharpe ratio
+profit factor
+A 40% win rate can still be profitable.
+
+Phase 8 — Paper Trade First
+Do this for at least:
+100 trades
+preferably 3+ market regimes
+Track:
+AI confidence
+reason for entry
+result
+market condition
+You are training BOTH:
+the model
+your evaluation process
+
+Phase 9 — Tiny Real Money
+Then:
+$5–20 positions
+no leverage
+no overnight holds initially
+Goal:
+test emotional + execution reality
+Suggested Tech Stack
+Easy Starter Stack
+Backend
+Python
+FastAPI
+Frontend:
+Tanstack or NextJS
+Data/Trading
+Alpaca
+Analysis
+Pandas
+NumPy
+Charts
+Plotly
+Prompt user with options and reasoning
+LLM Integration
+OpenAI API
+Claude API
+Bring your own keys (eventually)
+Amazon Bedrock (eventually)
+Backtesting
+Backtrader
+VectorBT
+
+VERY Important
+Your biggest edge probably will NOT come from:
+predicting price direction
+It may come from:
+avoiding low-quality trades
+identifying bad conditions
+reducing emotional mistakes
+position sizing
+volatility awareness
+That’s where AI can genuinely help retail traders.
+
+Suggested “Research Director” Prompt
+Here’s a strong starting prompt for the LLM:
+You are acting as a quantitative trading research assistant.
+
+Your role is NOT to guarantee profits or predict markets with certainty.
+
+Your role is to:
+- analyze market context
+- identify statistically favorable conditions
+- detect risk factors
+- summarize sentiment and volatility conditions
+- help evaluate trade quality
+
+Market:
+SPY intraday trading using 1-minute and 5-minute candles.
+
+Inputs provided to you may include:
+- price action
+- VWAP
+- volume
+- moving averages
+- market breadth
+- VIX
+- economic news
+- Fed commentary
+- earnings headlines
+- prior market behavior
+
+For every analysis:
+1. Determine the current market regime:
+   - trending
+   - mean reverting
+   - high volatility
+   - low volatility
+   - risk-on
+   - risk-off
+
+2. Assess whether conditions favor:
+   - long trades
+   - short trades
+   - no trade
+
+3. Provide:
+   - confidence score (1-10)
+   - reasoning
+   - key risks
+   - invalidation conditions
+
+4. Avoid overconfidence.
+5. Do not invent data.
+6. Prioritize capital preservation.
+7. Explain uncertainty clearly.
+
+Your goal is to improve trade selection quality, not maximize trade frequency.
+
+
+NOTES:
+Research tax implications of the trades you are making. Embed this into the decision making tree of the AI model
+

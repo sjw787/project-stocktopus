@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  lint:
+    name: Lint & Type-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      - name: Install dependencies
+        working-directory: backend
+        run: uv sync --dev
+      - name: Ruff lint
+        working-directory: backend
+        run: uv run ruff check src tests
+      - name: Ruff format check
+        working-directory: backend
+        run: uv run ruff format --check src tests
+      - name: Mypy
+        working-directory: backend
+        run: uv run mypy src
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: timescale/timescaledb:latest-pg16
+        env:
+          POSTGRES_DB: stocktopus_test
+          POSTGRES_USER: stocktopus
+          POSTGRES_PASSWORD: testpassword
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      - name: Install dependencies
+        working-directory: backend
+        run: uv sync --dev
+      - name: Run tests
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://stocktopus:testpassword@localhost:5432/stocktopus_test
+          REDIS_URL: redis://localhost:6379/0
+          ENV: test
+        run: uv run pytest --cov=stocktopus --cov-report=term-missing
