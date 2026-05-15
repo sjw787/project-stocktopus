@@ -295,7 +295,8 @@ async def _run_news_ingest(event: dict[str, Any]) -> dict[str, Any]:
     return {"status": "ok", "task": "news_ingest", **result}
 
 
-async def _run_paper_tick() -> dict[str, Any]:    """Run a paper trading tick for all configured symbols if the schedule is enabled."""
+async def _run_paper_tick() -> dict[str, Any]:
+    """Run a paper trading tick for all configured symbols if the schedule is enabled."""
     if not await _schedule_enabled("paper"):
         logger.info("Paper trading schedule disabled — skipping")
         return {"status": "skipped", "reason": "schedule disabled"}
