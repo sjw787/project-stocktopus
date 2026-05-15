@@ -6,7 +6,7 @@
  */
 
 import { Amplify } from "aws-amplify";
-import { fetchAuthSession, signIn, signOut, getCurrentUser } from "aws-amplify/auth";
+import { fetchAuthSession, signIn, signOut, getCurrentUser, confirmSignIn } from "aws-amplify/auth";
 
 export function configureAuth() {
   Amplify.configure({
@@ -39,4 +39,4 @@ export async function isAuthenticated(): Promise<boolean> {
   }
 }
 
-export { signIn, signOut };
+export { signIn, signOut, confirmSignIn };
