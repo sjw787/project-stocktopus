@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v8
         with:
           version: "latest"
       - name: Install dependencies
@@ -29,8 +29,7 @@ jobs:
         run: uv run ruff format --check src tests
       - name: Mypy
         working-directory: backend
-        run: uv run mypy src
-        continue-on-error: true
+        run: uv run mypy src || true
 
   test:
     name: Test
@@ -60,7 +59,7 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v8
         with:
           version: "latest"
       - name: Install dependencies
