@@ -14,17 +14,16 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 # ── Cold-start bootstrap ──────────────────────────────────────────────────────
-# In Lambda, fetch the DB password from Secrets Manager and inject DATABASE_URL
-# into the process environment before any database imports occur.
-# Must run at module level (import time) — before Mangum/FastAPI are initialised.
+# Fetch secrets from Secrets Manager and inject into os.environ before any
+# application imports occur. Must run at module level (import time).
 _bootstrap_done = False
 
 
-def _bootstrap_db_credentials() -> None:
-    """Fetch Aurora credentials from Secrets Manager and set DATABASE_URL.
+def _bootstrap_secrets() -> None:
+    """Load all secrets from Secrets Manager into os.environ on cold start.
 
-    Only executes when the required Lambda env vars are present.
-    Idempotent — called once per cold start; subsequent warm invocations skip it.
+    Reads DB credentials, API keys (OpenAI, Anthropic, Alpaca, Finnhub, NewsAPI)
+    from Secrets Manager ARNs passed as Lambda env vars. Idempotent.
     """
     global _bootstrap_done
     if _bootstrap_done:
@@ -38,26 +37,52 @@ def _bootstrap_db_credentials() -> None:
     from stocktopus.config import get_settings
 
     settings = get_settings()
-    if not (settings.lambda_runtime and settings.db_secret_arn and settings.rds_proxy_endpoint):
-        return  # Local dev — DATABASE_URL already set via .env
+    if not settings.lambda_runtime:
+        return  # Local dev — all values come from .env
 
     import boto3
-
     client = boto3.client("secretsmanager")
-    secret = json.loads(
-        client.get_secret_value(SecretId=settings.db_secret_arn)["SecretString"]
-    )
-    username = secret["username"]
-    password = urllib.parse.quote_plus(secret["password"])  # encode special chars
-    url = (
-        f"postgresql+asyncpg://{username}:{password}"
-        f"@{settings.rds_proxy_endpoint}:5432/{settings.db_name}"
-    )
-    os.environ["DATABASE_URL"] = url
-    get_settings.cache_clear()  # reload settings with the new DATABASE_URL
+
+    def _get(arn: str) -> dict:
+        return json.loads(client.get_secret_value(SecretId=arn)["SecretString"])
+
+    # DB credentials → DATABASE_URL
+    if settings.db_secret_arn and settings.rds_proxy_endpoint:
+        secret = _get(settings.db_secret_arn)
+        password = urllib.parse.quote_plus(secret["password"])
+        os.environ["DATABASE_URL"] = (
+            f"postgresql+asyncpg://{secret['username']}:{password}"
+            f"@{settings.rds_proxy_endpoint}:5432/{settings.db_name}"
+        )
+
+    # API keys
+    _load_api_key(client, os.getenv("OPENAI_SECRET_ARN"), "OPENAI_API_KEY", "api_key")
+    _load_api_key(client, os.getenv("ANTHROPIC_SECRET_ARN"), "ANTHROPIC_API_KEY", "api_key")
+    _load_api_key(client, os.getenv("FINNHUB_SECRET_ARN"), "FINNHUB_API_KEY", "api_key")
+    _load_api_key(client, os.getenv("NEWSAPI_SECRET_ARN"), "NEWSAPI_API_KEY", "api_key")
+
+    alpaca_arn = os.getenv("ALPACA_SECRET_ARN")
+    if alpaca_arn:
+        alpaca = _get(alpaca_arn)
+        os.environ["ALPACA_API_KEY"] = alpaca.get("api_key", "")
+        os.environ["ALPACA_SECRET_KEY"] = alpaca.get("secret_key", "")
+
+    get_settings.cache_clear()  # reload with injected values
 
 
-_bootstrap_db_credentials()
+def _load_api_key(client: Any, arn: str | None, env_var: str, field: str) -> None:
+    if not arn:
+        return
+    try:
+        import json
+        secret = json.loads(client.get_secret_value(SecretId=arn)["SecretString"])
+        import os
+        os.environ[env_var] = secret.get(field, "")
+    except Exception:
+        logger.exception("Failed to load secret %s into %s", arn, env_var)
+
+
+_bootstrap_secrets()
 
 # Lazily initialized to avoid importing the full FastAPI app on cold start
 # until we know it is an HTTP request (not a scheduled event).
@@ -99,6 +124,8 @@ def _handle_scheduled_event(event: dict[str, Any], context: Any) -> dict[str, An
         return asyncio.run(_run_ingestion_tick())
     elif task == "paper_tick":
         return asyncio.run(_run_paper_tick())
+    elif task == "backfill":
+        return asyncio.run(_run_backfill(event))
     else:
         logger.warning("Unknown scheduled task: %s", task)
         return {"status": "error", "message": f"unknown task: {task}"}
@@ -148,7 +175,57 @@ async def _run_ingestion_tick() -> dict[str, Any]:
     return {"status": "ok", "task": "ingestion_tick", "results": results}
 
 
-# ── Paper trading tick ─────────────────────────────────────────────────────────
+# ── Historical backfill ────────────────────────────────────────────────────────
+
+
+async def _run_backfill(event: dict[str, Any]) -> dict[str, Any]:
+    """Run a full historical candle backfill.
+
+    Event fields:
+      symbol   – ticker (e.g. "SPY"); defaults to all allowed_symbols
+      from_date – ISO date string "YYYY-MM-DD"; default: 1 year ago
+      to_date   – ISO date string "YYYY-MM-DD"; default: today
+      provider  – "alpaca" | "yahoo"; default: "alpaca" if key present, else "yahoo"
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from stocktopus.config import get_settings
+    from stocktopus.db.engine import AsyncSessionFactory
+    from stocktopus.ingestion.candle_ingest import backfill
+
+    settings = get_settings()
+    now = datetime.now(timezone.utc)
+
+    from_str = event.get("from_date")
+    to_str = event.get("to_date")
+    start = datetime.strptime(from_str, "%Y-%m-%d").replace(tzinfo=timezone.utc) if from_str else now - timedelta(days=365)
+    end = datetime.strptime(to_str, "%Y-%m-%d").replace(tzinfo=timezone.utc) if to_str else now
+
+    symbols_raw = event.get("symbol")
+    symbols = [symbols_raw.upper()] if symbols_raw else [s.upper() for s in settings.allowed_symbols]
+
+    provider_name = event.get("provider", "alpaca" if settings.alpaca_api_key else "yahoo")
+    if provider_name == "alpaca" and settings.alpaca_api_key:
+        from stocktopus.ingestion.alpaca_market_data import AlpacaMarketData
+        provider = AlpacaMarketData(
+            api_key=settings.alpaca_api_key,
+            secret_key=settings.alpaca_secret_key,
+            feed=settings.alpaca_data_feed or None,
+        )
+    else:
+        from stocktopus.ingestion.yahoo_market_data import YahooFinanceMarketData
+        provider = YahooFinanceMarketData()
+
+    results: dict[str, Any] = {}
+    async with AsyncSessionFactory() as session:
+        for symbol in symbols:
+            logger.info("Backfilling %s from %s to %s via %s", symbol, start.date(), end.date(), provider_name)
+            counts = await backfill(session, provider=provider, symbol=symbol, start=start, end=end)
+            await session.commit()
+            results[symbol] = counts
+            logger.info("Backfill %s complete: %s", symbol, counts)
+
+    return {"status": "ok", "task": "backfill", "results": results}
 
 
 async def _run_paper_tick() -> dict[str, Any]:

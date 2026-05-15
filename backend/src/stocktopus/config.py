@@ -71,6 +71,13 @@ class Settings(BaseSettings):
     cors_allowed_origins: str = ""
     # DynamoDB table name for runtime settings and feature flags
     settings_table_name: str = ""
+    # Secret ARNs for API keys — set as env vars in Lambda, loaded at cold start
+    # (these are not read directly by config; bootstrap injects the actual keys)
+    openai_secret_arn: str = ""
+    anthropic_secret_arn: str = ""
+    alpaca_secret_arn: str = ""
+    finnhub_secret_arn: str = ""
+    newsapi_secret_arn: str = ""
 
     # Debug / testing
     # Shift "now" by N hours — e.g. CLOCK_OFFSET_HOURS=-12 to simulate midday during off-hours.
