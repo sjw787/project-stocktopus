@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle, RefreshCw, Zap, ZapOff } from "lucide-react";
+import { AlertTriangle, CheckCircle, Clock, RefreshCw, Zap, ZapOff } from "lucide-react";
 import { useState } from "react";
 import { api, type PaperDrift, type PaperStatus, type PaperTrade, type TickResult } from "~/lib/api";
 
@@ -57,6 +57,7 @@ function EmptyState({ message }: { message: string }) {
 function StatusCard() {
   const qc = useQueryClient();
   const [lastTick, setLastTick] = useState<TickResult | null>(null);
+  const [hoursAgo, setHoursAgo] = useState<number>(12);
   const { data, isLoading, isError } = useQuery<PaperStatus>({
     queryKey: ["paper-status"],
     queryFn: api.paperStatus,
@@ -64,7 +65,7 @@ function StatusCard() {
   });
 
   const tick = useMutation({
-    mutationFn: api.paperTick,
+    mutationFn: (opts?: { hoursAgo?: number }) => api.paperTick(opts),
     onSuccess: (result) => {
       setLastTick(result);
       void qc.invalidateQueries({ queryKey: ["paper-status"] });
@@ -127,13 +128,21 @@ function StatusCard() {
               style={{
                 background: "var(--bg)",
                 border: "1px solid var(--border)",
-                color: lastTick.action === "entry_placed" || lastTick.action === "dry_run_entry"
+                color: lastTick.action === "entry_placed" || lastTick.action === "dry_run_entry" || lastTick.action === "simulated_entry"
                   ? "var(--green)"
                   : lastTick.action === "rejected"
                   ? "var(--red)"
                   : "var(--text-muted)",
               }}
             >
+              {lastTick.simulated && (
+                <span
+                  className="mr-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase"
+                  style={{ background: "var(--bg-card)", color: "var(--accent)", border: "1px solid var(--accent)" }}
+                >
+                  <Clock size={9} /> Sim · {new Date(lastTick.ts).toLocaleString()}
+                </span>
+              )}
               <span className="font-semibold uppercase">{lastTick.action.replace(/_/g, " ")}</span>
               {lastTick.reason && <span> — {lastTick.reason.replace(/_/g, " ")}</span>}
               {lastTick.qty != null && <span> · {lastTick.qty} shares</span>}
@@ -146,9 +155,9 @@ function StatusCard() {
           )}
 
           {/* Actions */}
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 items-center">
             <button
-              onClick={() => tick.mutate()}
+              onClick={() => tick.mutate(undefined)}
               disabled={tick.isPending || data.kill_switch_active}
               className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
               style={{ background: "var(--accent)", color: "#fff" }}
@@ -165,6 +174,31 @@ function StatusCard() {
               {kill.isPending ? <RefreshCw size={13} className="animate-spin" /> : <ZapOff size={13} />}
               Kill All
             </button>
+            <div
+              className="flex items-center gap-1 ml-auto rounded-lg px-2 py-1"
+              style={{ border: "1px solid var(--border)" }}
+            >
+              <Clock size={12} style={{ color: "var(--text-muted)" }} />
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={hoursAgo}
+                onChange={(e) => setHoursAgo(Number(e.target.value))}
+                className="w-12 bg-transparent text-xs text-right outline-none"
+                style={{ color: "var(--text)" }}
+              />
+              <span className="text-xs" style={{ color: "var(--text-muted)" }}>h ago</span>
+              <button
+                onClick={() => tick.mutate({ hoursAgo })}
+                disabled={tick.isPending || hoursAgo < 0}
+                title="Simulate a tick from this point in time. Read-only — no order placed, no trade saved."
+                className="ml-1 flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold transition-opacity hover:opacity-80 disabled:opacity-40"
+                style={{ background: "var(--bg)", color: "var(--accent)", border: "1px solid var(--accent)" }}
+              >
+                Simulate
+              </button>
+            </div>
           </div>
         </div>
       )}

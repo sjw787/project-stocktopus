@@ -75,20 +75,40 @@ async def paper_status(
 async def paper_tick(
     symbol: str = "SPY",
     dry_run: bool = False,
+    as_of: str | None = None,
+    hours_ago: float | None = None,
     session: AsyncSession = Depends(get_session),  # noqa: B008
     settings: Settings = Depends(get_settings),  # noqa: B008
 ) -> dict[str, Any]:
     """Trigger one paper-trading decision cycle.
 
-    Returns the tick result dict with action, reason, thesis (if applicable),
-    and order details (if an order was placed).
+    Optional time-travel:
+      - ``as_of``: ISO-8601 timestamp to simulate the tick from
+      - ``hours_ago``: convenience — simulate N hours before now
+    When either is supplied the tick runs as a simulation: no order is placed
+    and no trade row is persisted.
     """
+    from datetime import UTC, datetime, timedelta
+
     from stocktopus.broker.alpaca_adapter import AlpacaBrokerAdapter
     from stocktopus.broker.mock_adapter import MockBrokerAdapter
     from stocktopus.broker.paper_trader import PaperTrader
     from stocktopus.llm.anthropic_provider import AnthropicProvider
     from stocktopus.llm.openai_provider import OpenAIProvider
     from stocktopus.llm.research_director import ResearchDirector
+
+    as_of_dt: datetime | None = None
+    if as_of:
+        try:
+            as_of_dt = datetime.fromisoformat(as_of.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid as_of: {exc}") from exc
+        if as_of_dt.tzinfo is None:
+            as_of_dt = as_of_dt.replace(tzinfo=UTC)
+    elif hours_ago is not None:
+        if hours_ago < 0:
+            raise HTTPException(status_code=400, detail="hours_ago must be >= 0")
+        as_of_dt = datetime.now(UTC) - timedelta(hours=hours_ago)
 
     active = (settings.active_llm_provider or "openai").lower()
     if active == "anthropic" and settings.anthropic_api_key:
@@ -120,7 +140,7 @@ async def paper_tick(
         dry_run=dry_run,
     )
 
-    return await trader.tick()
+    return await trader.tick(as_of=as_of_dt)
 
 
 @paper_router.get("/drift")

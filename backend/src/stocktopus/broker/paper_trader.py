@@ -72,18 +72,27 @@ class PaperTrader:
             max_trades_per_day=max_trades_per_day,
         )
 
-    async def _latest_features(self) -> FeatureVector | None:
-        """Load the most recent feature snapshot for the symbol."""
+    async def _latest_features(
+        self, as_of: datetime | None = None
+    ) -> tuple[FeatureVector, str] | None:
+        """Load the most recent feature snapshot for the symbol.
+
+        If ``as_of`` is provided, returns the latest snapshot at or before that
+        timestamp (used for time-travel simulation). Returns ``(vector, id)``
+        or ``None`` if no snapshot exists.
+        """
         q = (
             select(FeatureSnapshot)
             .where(FeatureSnapshot.symbol == self._symbol)
             .order_by(desc(FeatureSnapshot.ts))
             .limit(1)
         )
+        if as_of is not None:
+            q = q.where(FeatureSnapshot.ts <= as_of)
         row = (await self._session.execute(q)).scalar_one_or_none()
         if row is None:
             return None
-        return FeatureVector(**row.features)
+        return FeatureVector(**row.features), row.id
 
     async def _get_open_position_qty(self) -> float:
         """Get current open qty from broker."""
@@ -93,11 +102,12 @@ class PaperTrader:
         except Exception:  # noqa: BLE001
             return 0.0
 
-    async def _count_trades_today(self) -> int:
-        """Count filled paper trades for today."""
+    async def _count_trades_today(self, as_of: datetime | None = None) -> int:
+        """Count filled paper trades for the day containing ``as_of`` (default: now)."""
         from sqlalchemy import text
 
-        today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+        ref = as_of if as_of is not None else datetime.now(UTC)
+        today_start = ref.replace(hour=0, minute=0, second=0, microsecond=0)
         result = await self._session.execute(
             text(
                 "SELECT COUNT(*) FROM paper_trades WHERE symbol = :sym AND entry_ts >= :today"
@@ -106,11 +116,12 @@ class PaperTrader:
         )
         return int(result.scalar_one() or 0)
 
-    async def _daily_realized_pnl(self) -> float:
-        """Sum today's realized P&L from paper_trades."""
+    async def _daily_realized_pnl(self, as_of: datetime | None = None) -> float:
+        """Sum realized P&L for the day containing ``as_of`` (default: now)."""
         from sqlalchemy import text
 
-        today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+        ref = as_of if as_of is not None else datetime.now(UTC)
+        today_start = ref.replace(hour=0, minute=0, second=0, microsecond=0)
         result = await self._session.execute(
             text(
                 "SELECT COALESCE(SUM(realized_pnl), 0) FROM paper_trades "
@@ -170,30 +181,44 @@ class PaperTrader:
         logger.info("PaperTrade entry persisted", trade_id=trade_id)
         return trade_id
 
-    async def tick(self) -> dict[str, Any]:
-        """Run one decision cycle. Returns a status dict for logging/API."""
+    async def tick(self, as_of: datetime | None = None) -> dict[str, Any]:
+        """Run one decision cycle. Returns a status dict for logging/API.
+
+        When ``as_of`` is provided, simulates the tick as of that historical
+        timestamp: feature snapshot, daily counters, and the LLM regime call
+        are all anchored to ``as_of``. Time-travel ticks are always treated as
+        dry runs — no real order is placed and no trade row is persisted.
+        """
         settings = get_settings()
-        ts = datetime.now(UTC)
-        if settings.clock_offset_hours:
-            ts += timedelta(hours=settings.clock_offset_hours)
+        simulated = as_of is not None
+        if as_of is not None:
+            ts = as_of if as_of.tzinfo else as_of.replace(tzinfo=UTC)
+        else:
+            ts = datetime.now(UTC)
+            if settings.clock_offset_hours:
+                ts += timedelta(hours=settings.clock_offset_hours)
         result: dict[str, Any] = {
             "ts": ts.isoformat(),
             "symbol": self._symbol,
             "action": "no_op",
             "reason": None,
+            "simulated": simulated,
         }
 
         # 1. Features
-        fv = await self._latest_features()
-        if fv is None:
+        fv_result = await self._latest_features(as_of=ts if simulated else None)
+        if fv_result is None:
             result["reason"] = "no_feature_snapshot"
             logger.warning("No feature snapshot — skipping tick", symbol=self._symbol)
             return result
+        fv, snapshot_id = fv_result
 
         # 2. LLM regime
         try:
             regime: RegimeAssessment = await self._director.analyze(
-                self._session, symbol=self._symbol
+                self._session,
+                symbol=self._symbol,
+                feature_snapshot_id=snapshot_id if simulated else None,
             )
         except Exception as exc:
             result["reason"] = f"llm_error: {type(exc).__name__}"
@@ -202,8 +227,8 @@ class PaperTrader:
 
         # 3. Current state
         open_qty = await self._get_open_position_qty()
-        trades_today = await self._count_trades_today()
-        daily_pnl = await self._daily_realized_pnl()
+        trades_today = await self._count_trades_today(as_of=ts if simulated else None)
+        daily_pnl = await self._daily_realized_pnl(as_of=ts if simulated else None)
 
         ctx = StrategyContext(
             symbol=self._symbol,
@@ -231,7 +256,8 @@ class PaperTrader:
         # 5. Risk filter
         fr = self._risk.evaluate(ctx, thesis)
         if not fr.approved:
-            await self._persist_rejection(ctx, fr)
+            if not simulated:
+                await self._persist_rejection(ctx, fr)
             result["action"] = "rejected"
             result["reason"] = fr.rejections[0].reason if fr.rejections else "risk_blocked"
             return result
@@ -245,7 +271,17 @@ class PaperTrader:
             client_order_id=str(uuid.uuid4()),
         )
 
-        if self._dry_run:
+        if simulated:
+            # Time-travel ticks never touch the broker or trade ledger.
+            result["action"] = "simulated_entry"
+            result["qty"] = qty
+            logger.info(
+                "SIMULATED — would place order",
+                symbol=self._symbol,
+                qty=qty,
+                as_of=ts.isoformat(),
+            )
+        elif self._dry_run:
             result["action"] = "dry_run_entry"
             result["qty"] = qty
             await self._persist_trade_entry(ctx, thesis, None, regime)

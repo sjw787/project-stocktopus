@@ -152,8 +152,9 @@ export interface PaperDrift {
 export interface TickResult {
   ts: string;
   symbol: string;
-  action: "no_op" | "rejected" | "dry_run_entry" | "entry_placed";
+  action: "no_op" | "rejected" | "dry_run_entry" | "entry_placed" | "simulated_entry";
   reason: string | null;
+  simulated?: boolean;
   thesis?: {
     direction: string;
     entry: number;
@@ -202,7 +203,13 @@ export const api = {
 
   // Paper trading
   paperStatus: () => get<PaperStatus>("/api/paper/status"),
-  paperTick: () => post<TickResult>("/api/paper/tick"),
+  paperTick: (opts?: { hoursAgo?: number; asOf?: string }) => {
+    const params = new URLSearchParams();
+    if (opts?.hoursAgo != null) params.set("hours_ago", String(opts.hoursAgo));
+    if (opts?.asOf) params.set("as_of", opts.asOf);
+    const qs = params.toString();
+    return post<TickResult>(`/api/paper/tick${qs ? `?${qs}` : ""}`);
+  },
   paperKill: (symbol?: string) =>
     post<unknown>(`/api/paper/kill${symbol ? `?symbol=${symbol}` : ""}`),
   paperDrift: () => get<PaperDrift>("/api/paper/drift"),
