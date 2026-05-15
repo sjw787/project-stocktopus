@@ -206,8 +206,7 @@ async def backfill_market_context_signals(
     )
     all_daily_rows = (await session.execute(daily_stmt)).scalars().all()
     all_daily: list[tuple[DateType, OHLCVBar]] = [
-        (r.ts.date(), OHLCVBar(r.open, r.high, r.low, r.close, r.volume, r.vwap))
-        for r in all_daily_rows
+        (r.ts.date(), OHLCVBar(r.open, r.high, r.low, r.close, r.volume, r.vwap)) for r in all_daily_rows
     ]
 
     # ── 3. Load intraday candles once per unique date in the batch ────────────
@@ -227,10 +226,7 @@ async def backfill_market_context_signals(
             .order_by(Candle.ts.asc())
         )
         intra_rows = (await session.execute(intra_stmt)).scalars().all()
-        intraday_by_date[d] = [
-            (r.ts, OHLCVBar(r.open, r.high, r.low, r.close, r.volume, r.vwap))
-            for r in intra_rows
-        ]
+        intraday_by_date[d] = [(r.ts, OHLCVBar(r.open, r.high, r.low, r.close, r.volume, r.vwap)) for r in intra_rows]
 
     # ── 4. Compute signals for each row using pre-loaded data (in-memory) ─────
     updated = 0

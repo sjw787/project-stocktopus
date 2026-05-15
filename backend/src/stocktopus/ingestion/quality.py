@@ -96,10 +96,7 @@ async def check_candle_quality(
                 negative_volume_count += 1
 
     passed = (
-        len(missing_sessions) == 0
-        and ohlc_violations == 0
-        and negative_volume_count == 0
-        and bar_count_violations == 0
+        len(missing_sessions) == 0 and ohlc_violations == 0 and negative_volume_count == 0 and bar_count_violations == 0
     )
 
     report = QualityReport(

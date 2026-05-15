@@ -24,9 +24,7 @@ async def paper_status(
     session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> dict[str, Any]:
     """Return Phase 8 gating progress plus live P&L summary."""
-    total_result = await session.execute(
-        text("SELECT COUNT(*) FROM paper_trades WHERE exit_ts IS NOT NULL")
-    )
+    total_result = await session.execute(text("SELECT COUNT(*) FROM paper_trades WHERE exit_ts IS NOT NULL"))
     total: int = total_result.scalar_one()
 
     regime_result = await session.execute(
@@ -37,9 +35,7 @@ async def paper_status(
     )
     regimes = [{"regime": r, "count": c} for r, c in regime_result.fetchall()]
 
-    open_result = await session.execute(
-        text("SELECT COUNT(*) FROM paper_trades WHERE exit_ts IS NULL")
-    )
+    open_result = await session.execute(text("SELECT COUNT(*) FROM paper_trades WHERE exit_ts IS NULL"))
     open_positions: int = open_result.scalar_one()
 
     pnl_result = await session.execute(
@@ -250,11 +246,7 @@ async def paper_trades(
 
     from stocktopus.db.models import PaperTrade
 
-    q = (
-        select(PaperTrade)
-        .order_by(desc(PaperTrade.entry_ts))
-        .limit(limit)
-    )
+    q = select(PaperTrade).order_by(desc(PaperTrade.entry_ts)).limit(limit)
     rows = (await session.execute(q)).scalars().all()
     return [
         {

@@ -110,12 +110,7 @@ async def evaluate(
     sym = symbol.upper()
 
     # 1. Latest feature snapshot
-    q = (
-        select(FeatureSnapshot)
-        .where(FeatureSnapshot.symbol == sym)
-        .order_by(desc(FeatureSnapshot.ts))
-        .limit(1)
-    )
+    q = select(FeatureSnapshot).where(FeatureSnapshot.symbol == sym).order_by(desc(FeatureSnapshot.ts)).limit(1)
     snap = (await session.execute(q)).scalar_one_or_none()
     if snap is None:
         raise HTTPException(
@@ -175,10 +170,7 @@ async def evaluate(
         generated_at=thesis.generated_at,
     )
 
-    checks_out = [
-        RiskCheckOut(check_name=r.check_name, verdict=r.verdict, reason=r.reason)
-        for r in fr.results
-    ]
+    checks_out = [RiskCheckOut(check_name=r.check_name, verdict=r.verdict, reason=r.reason) for r in fr.results]
 
     return EvaluateResponse(
         symbol=sym,
@@ -310,10 +302,7 @@ async def run_backtest(
     if not rows_5m:
         raise HTTPException(
             status_code=404,
-            detail=(
-                f"No {req.timeframe} candle data for {sym} "
-                f"in [{req.start}, {req.end}). Run ingestion first."
-            ),
+            detail=(f"No {req.timeframe} candle data for {sym} in [{req.start}, {req.end}). Run ingestion first."),
         )
 
     # Load daily bars
@@ -330,18 +319,20 @@ async def run_backtest(
     rows_1d = (await session.execute(q_1d)).scalars().all()
 
     def to_df(rows: list) -> pd.DataFrame:
-        return pd.DataFrame([
-            {
-                "ts": r.ts,
-                "open": r.open,
-                "high": r.high,
-                "low": r.low,
-                "close": r.close,
-                "volume": r.volume,
-                "symbol": r.symbol,
-            }
-            for r in rows
-        ])
+        return pd.DataFrame(
+            [
+                {
+                    "ts": r.ts,
+                    "open": r.open,
+                    "high": r.high,
+                    "low": r.low,
+                    "close": r.close,
+                    "volume": r.volume,
+                    "symbol": r.symbol,
+                }
+                for r in rows
+            ]
+        )
 
     intraday_df = to_df(rows_5m)
     daily_df = to_df(rows_1d) if rows_1d else None
@@ -355,10 +346,7 @@ async def run_backtest(
         key_risks=[],
         invalidation="N/A — offline backtest uses a fixed neutral regime.",
     )
-    regime_map = {
-        d: neutral
-        for d in pd.date_range(req.start, req.end, freq="D")
-    }
+    regime_map = {d: neutral for d in pd.date_range(req.start, req.end, freq="D")}
 
     runner = BacktestRunner(
         symbol=sym,

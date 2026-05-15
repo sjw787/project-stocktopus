@@ -67,10 +67,7 @@ class DailyLossCheck(RiskCheck):
             return RiskResult(
                 check_name=self.name,
                 verdict=RiskVerdict.FAILED,
-                reason=(
-                    f"Daily loss ${loss:.2f} has reached the ${self._max:.2f} limit. "
-                    "No further trades today."
-                ),
+                reason=(f"Daily loss ${loss:.2f} has reached the ${self._max:.2f} limit. No further trades today."),
                 details={"daily_loss": loss, "max_daily_loss_usd": self._max},
             )
         return RiskResult(
@@ -186,9 +183,7 @@ class VolatilityCeilingCheck(RiskCheck):
                 reason=f"VIX {vix:.1f} elevated (warn threshold {self._warn:.1f}).",
                 details={"vix": vix, "warn": self._warn},
             )
-        return RiskResult(
-            check_name=self.name, verdict=RiskVerdict.PASSED, details={"vix": vix}
-        )
+        return RiskResult(check_name=self.name, verdict=RiskVerdict.PASSED, details={"vix": vix})
 
 
 # ── 6. LLM assessment required ────────────────────────────────────────────────

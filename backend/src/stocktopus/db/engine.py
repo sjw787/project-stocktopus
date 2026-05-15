@@ -21,6 +21,7 @@ if settings.lambda_runtime:
     # NullPool ensures no connections are held between calls, avoiding
     # "Future attached to a different loop" errors.
     from sqlalchemy.pool import NullPool
+
     _engine_kwargs["poolclass"] = NullPool
 else:
     _engine_kwargs["pool_size"] = 10

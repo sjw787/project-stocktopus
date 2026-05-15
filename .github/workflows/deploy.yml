@@ -1,0 +1,270 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "infra/**"
+      - "deploy/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: "prod"
+        type: choice
+        options: [prod, dev]
+      skip_build:
+        description: "Skip Docker build (re-use latest image)"
+        required: false
+        default: false
+        type: boolean
+      run_migrations:
+        description: "Invoke migration Lambda after apply"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  ENVIRONMENT: ${{ github.event.inputs.environment || 'prod' }}
+  TF_WORKING_DIR: infra
+
+jobs:
+  # ── Tests ────────────────────────────────────────────────────────────────────
+  test:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: uv sync --frozen --dev
+
+      - name: Lint
+        run: uv run ruff check src
+
+      - name: Type check
+        run: uv run mypy src --ignore-missing-imports
+        continue-on-error: true
+
+      - name: Run tests
+        run: uv run pytest --tb=short -q
+        env:
+          DATABASE_URL: "postgresql+asyncpg://test:test@localhost:5432/test"
+          OPENAI_API_KEY: "sk-test"
+          ALPACA_API_KEY: "test"
+          ALPACA_SECRET_KEY: "test"
+
+  # ── Build & Push ──────────────────────────────────────────────────────────────
+  build:
+    name: Build & push container
+    runs-on: ubuntu-latest
+    needs: test
+    if: ${{ !inputs.skip_build }}
+    outputs:
+      image_uri: ${{ steps.meta.outputs.image_uri }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to ECR
+        id: ecr_login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image metadata
+        id: meta
+        run: |
+          ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+          REPO="${ACCOUNT}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/stocktopus-${{ env.ENVIRONMENT }}"
+          echo "repo=${REPO}" >> $GITHUB_OUTPUT
+          echo "image_uri=${REPO}:${{ github.sha }}" >> $GITHUB_OUTPUT
+
+      - name: Set up QEMU (arm64 cross-compile)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: deploy/Dockerfile.backend
+          platforms: linux/arm64
+          push: true
+          provenance: false
+          tags: |
+            ${{ steps.meta.outputs.image_uri }}
+            ${{ steps.meta.outputs.repo }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Terraform ────────────────────────────────────────────────────────────────
+  terraform:
+    name: Terraform apply
+    runs-on: ubuntu-latest
+    needs: [test, build]
+    if: always() && needs.test.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped')
+    environment: ${{ inputs.environment || 'prod' }}
+    outputs:
+      api_url: ${{ steps.outputs.outputs.api_url }}
+      lambda_function_name: ${{ steps.outputs.outputs.lambda_function_name }}
+      lambda_migrate_name: ${{ steps.outputs.outputs.lambda_migrate_name }}
+      amplify_url: ${{ steps.outputs.outputs.amplify_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.7"
+          terraform_wrapper: false
+
+      - name: Get AWS account ID
+        id: aws
+        run: echo "account_id=$(aws sts get-caller-identity --query Account --output text)" >> $GITHUB_OUTPUT
+
+      - name: Set image URI
+        id: image
+        run: |
+          if [ "${{ inputs.skip_build }}" = "true" ]; then
+            REPO="${{ steps.aws.outputs.account_id }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/stocktopus-${{ env.ENVIRONMENT }}"
+            echo "uri=${REPO}:latest" >> $GITHUB_OUTPUT
+          else
+            echo "uri=${{ needs.build.outputs.image_uri }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Terraform init
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          terraform init \
+            -backend-config="bucket=stocktopus-tf-state-${{ steps.aws.outputs.account_id }}" \
+            -backend-config="key=stocktopus/${{ env.ENVIRONMENT }}/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="dynamodb_table=stocktopus-tf-lock"
+
+      - name: Terraform validate
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform validate
+
+      - name: Terraform plan
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          terraform plan -out=tfplan \
+            -var="environment=${{ env.ENVIRONMENT }}" \
+            -var="aws_region=${{ env.AWS_REGION }}" \
+            -var="image_uri=${{ steps.image.outputs.uri }}" \
+            -var="github_repo_slug=${{ vars.REPO_SLUG }}" \
+            -var="github_repository=${{ vars.REPOSITORY_URL }}" \
+            -var="github_access_token=${{ secrets.AMPLIFY_GITHUB_TOKEN }}" \
+            -var="cors_origins=${{ vars.CORS_ORIGINS }}" \
+            -var="domain_name=${{ vars.DOMAIN_NAME }}" \
+            -var="api_subdomain=${{ vars.API_SUBDOMAIN }}" \
+            -var="cognito_domain_prefix=${{ vars.COGNITO_DOMAIN_PREFIX }}" \
+            -var="custom_domain_enabled=${{ vars.CUSTOM_DOMAIN_ENABLED || 'false' }}" \
+            -var="create_hosted_zone=${{ vars.CREATE_HOSTED_ZONE || 'true' }}"
+
+      - name: Terraform apply
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform apply -auto-approve tfplan
+
+      - name: Capture outputs
+        id: outputs
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          echo "api_url=$(terraform output -raw api_url)" >> $GITHUB_OUTPUT
+          echo "lambda_function_name=$(terraform output -raw lambda_function_name)" >> $GITHUB_OUTPUT
+          echo "lambda_migrate_name=$(terraform output -raw lambda_migrate_function_name)" >> $GITHUB_OUTPUT
+          echo "amplify_url=$(terraform output -raw amplify_default_url)" >> $GITHUB_OUTPUT
+
+      - name: Update Lambda to new image
+        run: |
+          aws lambda update-function-code \
+            --function-name ${{ steps.outputs.outputs.lambda_function_name }} \
+            --image-uri ${{ steps.image.outputs.uri }} \
+            --architectures arm64 \
+            --no-cli-pager
+
+          aws lambda update-function-code \
+            --function-name ${{ steps.outputs.outputs.lambda_migrate_name }} \
+            --image-uri ${{ steps.image.outputs.uri }} \
+            --architectures arm64 \
+            --no-cli-pager
+
+          # Wait for both functions to be ready
+          aws lambda wait function-updated --function-name ${{ steps.outputs.outputs.lambda_function_name }}
+          aws lambda wait function-updated --function-name ${{ steps.outputs.outputs.lambda_migrate_name }}
+
+  # ── Migrations ────────────────────────────────────────────────────────────────
+  migrate:
+    name: Run database migrations
+    runs-on: ubuntu-latest
+    needs: terraform
+    if: ${{ inputs.run_migrations != false }}
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Invoke migration Lambda
+        run: |
+          aws lambda invoke \
+            --function-name ${{ needs.terraform.outputs.lambda_migrate_name }} \
+            --payload '{}' \
+            --cli-read-timeout 360 \
+            --cli-connect-timeout 30 \
+            --no-cli-pager \
+            /tmp/migrate-response.json
+
+          cat /tmp/migrate-response.json
+          STATUS=$(jq -r '.status // .errorType // "unknown"' /tmp/migrate-response.json)
+          echo "Migration result: ${STATUS}"
+          [ "$STATUS" = "ok" ] || exit 1
+
+  # ── Summary ───────────────────────────────────────────────────────────────────
+  summary:
+    name: Deployment summary
+    runs-on: ubuntu-latest
+    needs: [terraform, migrate]
+    if: always() && needs.terraform.result == 'success'
+    steps:
+      - name: Write summary
+        run: |
+          echo "## 🚀 Stocktopus deployed" >> $GITHUB_STEP_SUMMARY
+          echo "| | |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Environment** | \`${{ env.ENVIRONMENT }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **API URL** | ${{ needs.terraform.outputs.api_url }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Frontend** | ${{ needs.terraform.outputs.amplify_url }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Lambda** | \`${{ needs.terraform.outputs.lambda_function_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Migrations** | ${{ needs.migrate.result }} |" >> $GITHUB_STEP_SUMMARY

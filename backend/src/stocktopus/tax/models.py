@@ -20,14 +20,14 @@ from typing import Any
 
 
 class HoldingPeriod(StrEnum):
-    SHORT_TERM = "short_term"   # < 365 days, taxed as ordinary income
-    LONG_TERM = "long_term"     # ≥ 365 days, lower rate
+    SHORT_TERM = "short_term"  # < 365 days, taxed as ordinary income
+    LONG_TERM = "long_term"  # ≥ 365 days, lower rate
 
 
 class WashSaleStatus(StrEnum):
-    CLEAN = "clean"                  # No wash-sale issue
-    POTENTIAL = "potential"          # Pending — within look-ahead window
-    TRIGGERED = "triggered"          # Wash-sale rule applied, loss disallowed
+    CLEAN = "clean"  # No wash-sale issue
+    POTENTIAL = "potential"  # Pending — within look-ahead window
+    TRIGGERED = "triggered"  # Wash-sale rule applied, loss disallowed
 
 
 @dataclass
@@ -38,14 +38,14 @@ class TaxLot:
     symbol: str
     buy_date: date
     qty: float
-    cost_basis: float          # per share
-    is_paper: bool = True      # False = real money lot
+    cost_basis: float  # per share
+    is_paper: bool = True  # False = real money lot
 
     # Set when the lot is sold
     sell_date: date | None = None
     sell_price: float | None = None
     wash_sale_status: WashSaleStatus = WashSaleStatus.CLEAN
-    disallowed_loss: float = 0.0   # wash-sale disallowed amount (per share)
+    disallowed_loss: float = 0.0  # wash-sale disallowed amount (per share)
 
     @property
     def is_open(self) -> bool:

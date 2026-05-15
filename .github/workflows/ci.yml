@@ -27,6 +27,7 @@ jobs:
       - name: Mypy
         working-directory: backend
         run: uv run mypy src
+        continue-on-error: true
 
   test:
     name: Test

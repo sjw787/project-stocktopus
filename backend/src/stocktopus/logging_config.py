@@ -32,6 +32,7 @@ def configure_logging() -> None:
 
     # Skip file logging in Lambda (read-only filesystem); CloudWatch captures stdout.
     import os
+
     if not os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
         logger.add(
             "logs/stocktopus.log",

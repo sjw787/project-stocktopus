@@ -30,9 +30,7 @@ class Candle(Base):
     """OHLCV price candles — stored in a TimescaleDB hypertable partitioned by ts."""
 
     __tablename__ = "candles"
-    __table_args__ = (
-        Index("ix_candles_symbol_tf_ts", "symbol", "timeframe", "ts"),
-    )
+    __table_args__ = (Index("ix_candles_symbol_tf_ts", "symbol", "timeframe", "ts"),)
 
     symbol: Mapped[str] = mapped_column(String(16), primary_key=True)
     timeframe: Mapped[str] = mapped_column(String(8), primary_key=True)  # "1m", "5m", "1d"
@@ -57,9 +55,7 @@ class NewsEvent(Base):
         Index("ix_news_events_published_at", "published_at"),
     )
 
-    id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4())
-    )
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
     headline: Mapped[str] = mapped_column(Text, nullable=False)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     source: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -120,15 +116,11 @@ class FeatureSnapshot(Base):
     __tablename__ = "feature_snapshots"
     __table_args__ = (Index("ix_feature_snapshots_symbol_ts", "symbol", "ts"),)
 
-    id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4())
-    )
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
     symbol: Mapped[str] = mapped_column(String(16), nullable=False)
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     features: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
 
 
 # ── Trade Lots (for tax tracking) ─────────────────────────────────────────────
@@ -140,9 +132,7 @@ class TradeLot(Base):
     __tablename__ = "trade_lots"
     __table_args__ = (Index("ix_trade_lots_symbol_entry_date", "symbol", "entry_date"),)
 
-    id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4())
-    )
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
     # user_id kept as nullable for future multi-user support
     user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     symbol: Mapped[str] = mapped_column(String(16), nullable=False)
@@ -155,9 +145,7 @@ class TradeLot(Base):
     stcg_ltcg: Mapped[str | None] = mapped_column(String(8), nullable=True)  # "stcg"|"ltcg"
     wash_sale_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     disallowed_loss: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False, default=0)
-    feature_snapshot_id: Mapped[str | None] = mapped_column(
-        ForeignKey("feature_snapshots.id"), nullable=True
-    )
+    feature_snapshot_id: Mapped[str | None] = mapped_column(ForeignKey("feature_snapshots.id"), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     feature_snapshot: Mapped["FeatureSnapshot | None"] = relationship("FeatureSnapshot")
@@ -179,9 +167,7 @@ class LLMLog(Base):
         Index("ix_llm_logs_ts", "ts"),
     )
 
-    id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4())
-    )
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     symbol: Mapped[str] = mapped_column(String(16), nullable=False)
     prompt_version: Mapped[str] = mapped_column(String(16), nullable=False, default="v1")
@@ -190,9 +176,7 @@ class LLMLog(Base):
     raw_response: Mapped[str] = mapped_column(Text, nullable=False, default="")
     parsed_ok: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     regime_assessment: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    feature_snapshot_id: Mapped[str | None] = mapped_column(
-        ForeignKey("feature_snapshots.id"), nullable=True
-    )
+    feature_snapshot_id: Mapped[str | None] = mapped_column(ForeignKey("feature_snapshots.id"), nullable=True)
     prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     completion_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
@@ -219,9 +203,7 @@ class TradeRejection(Base):
         Index("ix_trade_rejections_ts", "ts"),
     )
 
-    id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4())
-    )
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     symbol: Mapped[str] = mapped_column(String(16), nullable=False)
     strategy_name: Mapped[str] = mapped_column(String(64), nullable=False, default="")
@@ -237,9 +219,7 @@ class TradeRejection(Base):
     # The proposed thesis that was rejected
     thesis_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
-    feature_snapshot_id: Mapped[str | None] = mapped_column(
-        ForeignKey("feature_snapshots.id"), nullable=True
-    )
+    feature_snapshot_id: Mapped[str | None] = mapped_column(ForeignKey("feature_snapshots.id"), nullable=True)
     feature_snapshot: Mapped["FeatureSnapshot | None"] = relationship(
         "FeatureSnapshot", foreign_keys=[feature_snapshot_id]
     )
@@ -261,9 +241,7 @@ class PaperTrade(Base):
         Index("ix_paper_trades_regime", "regime"),
     )
 
-    id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4())
-    )
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
     symbol: Mapped[str] = mapped_column(String(16), nullable=False)
     is_paper: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
@@ -295,9 +273,7 @@ class PaperTrade(Base):
     rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     llm_log_id: Mapped[str | None] = mapped_column(ForeignKey("llm_logs.id"), nullable=True)
-    feature_snapshot_id: Mapped[str | None] = mapped_column(
-        ForeignKey("feature_snapshots.id"), nullable=True
-    )
+    feature_snapshot_id: Mapped[str | None] = mapped_column(ForeignKey("feature_snapshots.id"), nullable=True)
 
     llm_log: Mapped["LLMLog | None"] = relationship("LLMLog", foreign_keys=[llm_log_id])
     feature_snapshot_ref: Mapped["FeatureSnapshot | None"] = relationship(

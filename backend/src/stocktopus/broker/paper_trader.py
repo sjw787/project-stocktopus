@@ -72,9 +72,7 @@ class PaperTrader:
             max_trades_per_day=max_trades_per_day,
         )
 
-    async def _latest_features(
-        self, as_of: datetime | None = None
-    ) -> tuple[FeatureVector, str] | None:
+    async def _latest_features(self, as_of: datetime | None = None) -> tuple[FeatureVector, str] | None:
         """Load the most recent feature snapshot for the symbol.
 
         If ``as_of`` is provided, returns the latest snapshot at or before that
@@ -109,9 +107,7 @@ class PaperTrader:
         ref = as_of if as_of is not None else datetime.now(UTC)
         today_start = ref.replace(hour=0, minute=0, second=0, microsecond=0)
         result = await self._session.execute(
-            text(
-                "SELECT COUNT(*) FROM paper_trades WHERE symbol = :sym AND entry_ts >= :today"
-            ),
+            text("SELECT COUNT(*) FROM paper_trades WHERE symbol = :sym AND entry_ts >= :today"),
             {"sym": self._symbol, "today": today_start},
         )
         return int(result.scalar_one() or 0)
@@ -123,10 +119,7 @@ class PaperTrader:
         ref = as_of if as_of is not None else datetime.now(UTC)
         today_start = ref.replace(hour=0, minute=0, second=0, microsecond=0)
         result = await self._session.execute(
-            text(
-                "SELECT COALESCE(SUM(realized_pnl), 0) FROM paper_trades "
-                "WHERE symbol = :sym AND exit_ts >= :today"
-            ),
+            text("SELECT COALESCE(SUM(realized_pnl), 0) FROM paper_trades WHERE symbol = :sym AND exit_ts >= :today"),
             {"sym": self._symbol, "today": today_start},
         )
         return float(result.scalar_one() or 0.0)
@@ -310,4 +303,3 @@ class PaperTrader:
         order_ids = [r.order_id for r in results]
         logger.warning("Kill switch complete", orders=order_ids)
         return order_ids
-

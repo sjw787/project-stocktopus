@@ -98,13 +98,19 @@ class OpeningMomentumStrategy(Strategy):
         gap = fv.gap_pct
         if gap is None or gap < _ENTRY["min_gap_pct"]:
             logger.debug("Gap filter failed", gap_pct=gap, required=_ENTRY["min_gap_pct"])
-            return None, f"gap_filter: {gap:.3f}% < {_ENTRY['min_gap_pct']}%" if gap is not None else "gap_filter: gap_pct=None"
+            return (
+                None,
+                f"gap_filter: {gap:.3f}% < {_ENTRY['min_gap_pct']}%" if gap is not None else "gap_filter: gap_pct=None",
+            )
 
         # ── RVOL filter ───────────────────────────────────────────────────────
         rvol = fv.rvol
         if rvol is None or rvol < _ENTRY["min_rvol"]:
             logger.debug("RVOL filter failed", rvol=rvol, required=_ENTRY["min_rvol"])
-            return None, f"rvol_filter: {rvol:.2f}x < {_ENTRY['min_rvol']}x" if rvol is not None else "rvol_filter: rvol=None"
+            return (
+                None,
+                f"rvol_filter: {rvol:.2f}x < {_ENTRY['min_rvol']}x" if rvol is not None else "rvol_filter: rvol=None",
+            )
 
         # ── VWAP filter ───────────────────────────────────────────────────────
         if _ENTRY["require_above_vwap"] and not fv.above_vwap:

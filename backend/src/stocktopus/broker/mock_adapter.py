@@ -119,9 +119,7 @@ class MockBrokerAdapter(BrokerAdapter):
         if pos is None:
             return None
         side = OrderSide.SELL if pos.qty > 0 else OrderSide.BUY
-        return await self.place_order(
-            OrderRequest(symbol=symbol, side=side, qty=abs(pos.qty))
-        )
+        return await self.place_order(OrderRequest(symbol=symbol, side=side, qty=abs(pos.qty)))
 
     async def close_all_positions(self) -> list[OrderResult]:
         symbols = list(self._positions.keys())

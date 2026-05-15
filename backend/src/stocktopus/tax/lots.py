@@ -19,10 +19,10 @@ class SaleResult(NamedTuple):
     """Result of recording a sale."""
 
     closed_lots: list[TaxLot]
-    total_pnl: float          # recognized gain/loss after disallowed amounts
-    raw_pnl: float            # before wash-sale adjustment
-    stcg: float               # short-term gain component
-    ltcg: float               # long-term gain component
+    total_pnl: float  # recognized gain/loss after disallowed amounts
+    raw_pnl: float  # before wash-sale adjustment
+    stcg: float  # short-term gain component
+    ltcg: float  # long-term gain component
     wash_sale_triggered: bool
 
 
@@ -109,22 +109,13 @@ class LotTracker:
 
         # Aggregate results
         total_raw = sum(
-            (lot.sell_price - lot.cost_basis) * lot.qty for lot in closed  # type: ignore[operator]
+            (lot.sell_price - lot.cost_basis) * lot.qty
+            for lot in closed  # type: ignore[operator]
         )
         total_recognized = sum(lot.realized_pnl_total or 0.0 for lot in closed)
-        stcg = sum(
-            lot.realized_pnl_total or 0.0
-            for lot in closed
-            if lot.holding_days < 365
-        )
-        ltcg = sum(
-            lot.realized_pnl_total or 0.0
-            for lot in closed
-            if lot.holding_days >= 365
-        )
-        wash_sale_triggered = any(
-            lot.wash_sale_status == WashSaleStatus.TRIGGERED for lot in closed
-        )
+        stcg = sum(lot.realized_pnl_total or 0.0 for lot in closed if lot.holding_days < 365)
+        ltcg = sum(lot.realized_pnl_total or 0.0 for lot in closed if lot.holding_days >= 365)
+        wash_sale_triggered = any(lot.wash_sale_status == WashSaleStatus.TRIGGERED for lot in closed)
 
         self._wash_detector.notify_sell(symbol, sell_date)
         return SaleResult(
@@ -149,10 +140,7 @@ class LotTracker:
         return list(self._closed)
 
     def unrealized_pnl(self, symbol: str, current_price: float) -> float:
-        return sum(
-            (current_price - lot.cost_basis) * lot.qty
-            for lot in self._open.get(symbol, deque())
-        )
+        return sum((current_price - lot.cost_basis) * lot.qty for lot in self._open.get(symbol, deque()))
 
     def stcg_on_close(self, symbol: str, current_price: float) -> float:
         """Estimated STCG if all open lots for symbol were closed today."""

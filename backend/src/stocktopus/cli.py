@@ -80,11 +80,7 @@ def backfill_cmd(
     DEFAULT_UNIVERSE.validate_symbol(symbol.upper(), qqq_enabled=qqq_enabled)
 
     start = datetime.strptime(from_date, "%Y-%m-%d").replace(tzinfo=UTC)
-    end = (
-        datetime.strptime(to_date, "%Y-%m-%d").replace(tzinfo=UTC)
-        if to_date
-        else datetime.now(tz=UTC)
-    )
+    end = datetime.strptime(to_date, "%Y-%m-%d").replace(tzinfo=UTC) if to_date else datetime.now(tz=UTC)
 
     if provider == "alpaca":
         data_provider = AlpacaMarketData(
@@ -108,9 +104,7 @@ def backfill_cmd(
         for tf, count in results.items():
             click.echo(f"  {tf}: {count} rows inserted")
 
-    click.echo(
-        f"Backfilling {symbol.upper()} from {from_date} to {to_date or 'today'} via {provider}..."
-    )
+    click.echo(f"Backfilling {symbol.upper()} from {from_date} to {to_date or 'today'} via {provider}...")
     asyncio.run(_run())
     click.echo("Done.")
 
@@ -161,11 +155,7 @@ def context_cmd(at_time: str | None) -> None:
     """Snapshot current broad-market context (breadth proxies, VIX, sector ETFs)."""
     settings = get_settings()
 
-    ts = (
-        datetime.fromisoformat(at_time.rstrip("Z")).replace(tzinfo=UTC)
-        if at_time
-        else datetime.now(tz=UTC)
-    )
+    ts = datetime.fromisoformat(at_time.rstrip("Z")).replace(tzinfo=UTC) if at_time else datetime.now(tz=UTC)
 
     provider = AlpacaMarketData(
         api_key=settings.alpaca_api_key,
@@ -218,11 +208,7 @@ def compute_features_cmd(symbol: str, at_ts: str | None) -> None:
         click.echo(f"Symbol:      {fv.symbol}  ts: {fv.ts.isoformat()}")
         click.echo(f"Close:       {fv.close:.4f}")
         click.echo(f"SMA20d:      {fv.sma_20d}  SMA50d: {fv.sma_50d}  SMA200d: {fv.sma_200d}")
-        click.echo(
-            f"ATR(14d):    {fv.atr_14d}  ({fv.atr_pct:.2f}%)"
-            if fv.atr_pct
-            else f"ATR(14d): {fv.atr_14d}"
-        )
+        click.echo(f"ATR(14d):    {fv.atr_14d}  ({fv.atr_pct:.2f}%)" if fv.atr_pct else f"ATR(14d): {fv.atr_14d}")
         click.echo(f"VWAP:        {fv.vwap}  above={fv.above_vwap}")
         click.echo(f"RVOL:        {fv.rvol}")
         click.echo(f"Trend(1d):   {fv.trend_1d}  gap%: {fv.gap_pct}")
@@ -407,9 +393,7 @@ def analyze_regime_cmd(
 
     async def _run() -> None:
         async with AsyncSessionFactory() as session:
-            assessment = await director.analyze(
-                session, symbol=symbol.upper(), feature_snapshot_id=snapshot_id
-            )
+            assessment = await director.analyze(session, symbol=symbol.upper(), feature_snapshot_id=snapshot_id)
         click.echo(f"\nRegime Assessment for {symbol.upper()}")
         click.echo("=" * 40)
         click.echo(f"  Regime:     {assessment.regime}")
@@ -496,9 +480,7 @@ def strategy_evaluate_cmd(
     async def _run() -> None:
         async with AsyncSessionFactory() as session:
             # 1. Get LLM regime assessment (reuses cached if recent)
-            assessment = await director.analyze(
-                session, symbol=symbol.upper(), feature_snapshot_id=snapshot_id
-            )
+            assessment = await director.analyze(session, symbol=symbol.upper(), feature_snapshot_id=snapshot_id)
 
             # 2. Load latest feature snapshot
             q = (
@@ -528,8 +510,7 @@ def strategy_evaluate_cmd(
 
         if thesis is None:
             click.echo("  Signal: NO TRADE — entry conditions not met.")
-            click.echo(f"  Regime: {assessment.regime} / {assessment.lean} "
-                       f"@ {assessment.confidence}/10")
+            click.echo(f"  Regime: {assessment.regime} / {assessment.lean} @ {assessment.confidence}/10")
             return
 
         # 4. Run risk filter
@@ -632,17 +613,11 @@ def backtest_run_cmd(
     from stocktopus.features.models import Regime, TradeLean
 
     start_dt = datetime.strptime(from_date, "%Y-%m-%d").replace(tzinfo=UTC)
-    end_dt = (
-        datetime.strptime(to_date, "%Y-%m-%d").replace(tzinfo=UTC)
-        if to_date
-        else datetime.now(UTC)
-    )
+    end_dt = datetime.strptime(to_date, "%Y-%m-%d").replace(tzinfo=UTC) if to_date else datetime.now(UTC)
     sym = symbol.upper()
     run_id = str(uuid.uuid4())[:8]
 
-    friction_model = (
-        FrictionModel.realistic_alpaca() if friction == "realistic" else FrictionModel.zero()
-    )
+    friction_model = FrictionModel.realistic_alpaca() if friction == "realistic" else FrictionModel.zero()
 
     click.echo(f"Backtest: {sym}  {from_date} → {to_date or 'today'}")
     click.echo(f"Capital: ${capital:,.0f}  |  Position size: ${position_size:.0f}")
@@ -729,6 +704,7 @@ def backtest_run_cmd(
             llm_rows = (await session.execute(q_llm)).scalars().all()
 
             from stocktopus.features.models import RegimeAssessment
+
             regime_map: dict = {}
             for row in llm_rows:
                 if row.regime_assessment:
@@ -793,7 +769,7 @@ def backtest_run_cmd(
             for regime, data in sorted(metrics.regime_breakdown.items()):
                 click.echo(
                     f"  {regime:<20} trades={data['trades']:>3}  "
-                    f"wr={data['win_rate']*100:>5.1f}%  "
+                    f"wr={data['win_rate'] * 100:>5.1f}%  "
                     f"pnl=${data['net_pnl']:>+8.2f}"
                 )
 
@@ -958,9 +934,7 @@ def paper_status_cmd() -> None:
         async with AsyncSessionFactory() as session:
             # Total completed trades
             total = (
-                await session.execute(
-                    text("SELECT COUNT(*) FROM paper_trades WHERE exit_ts IS NOT NULL")
-                )
+                await session.execute(text("SELECT COUNT(*) FROM paper_trades WHERE exit_ts IS NOT NULL"))
             ).scalar_one()
 
             # Regimes covered
@@ -989,10 +963,7 @@ def paper_status_cmd() -> None:
             else:
                 remaining_trades = max(0, 100 - total)
                 remaining_regimes = max(0, 3 - len(regimes))
-                click.echo(
-                    f"⏳  Not ready: need {remaining_trades} more trades, "
-                    f"{remaining_regimes} more regime(s)"
-                )
+                click.echo(f"⏳  Not ready: need {remaining_trades} more trades, {remaining_regimes} more regime(s)")
 
     asyncio.run(_run())
 
@@ -1107,17 +1078,11 @@ def live_promote_cmd(confirm_key_1: str, confirm_key_2: str) -> None:
             # Phase 8 gate check
             from sqlalchemy import text
 
-            result = await session.execute(
-                text(
-                    "SELECT COUNT(*) FROM paper_trades WHERE exit_ts IS NOT NULL"
-                )
-            )
+            result = await session.execute(text("SELECT COUNT(*) FROM paper_trades WHERE exit_ts IS NOT NULL"))
             completed = result.scalar() or 0
 
             regime_result = await session.execute(
-                text(
-                    "SELECT COUNT(DISTINCT regime) FROM paper_trades WHERE exit_ts IS NOT NULL"
-                )
+                text("SELECT COUNT(DISTINCT regime) FROM paper_trades WHERE exit_ts IS NOT NULL")
             )
             regimes = regime_result.scalar() or 0
 

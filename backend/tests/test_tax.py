@@ -135,11 +135,11 @@ class TestHoldingPeriod:
         t = LotTracker()
         buy_short = date.today() - timedelta(days=30)
         buy_long = date.today() - timedelta(days=400)
-        t.record_buy("SPY", qty=5, price=490.0, trade_date=buy_long)   # LTCG
+        t.record_buy("SPY", qty=5, price=490.0, trade_date=buy_long)  # LTCG
         t.record_buy("SPY", qty=5, price=490.0, trade_date=buy_short)  # STCG
         result = t.record_sell("SPY", qty=10, price=510.0, trade_date=date.today())
-        assert result.ltcg == pytest.approx(100.0)   # 5 * 20
-        assert result.stcg == pytest.approx(100.0)   # 5 * 20
+        assert result.ltcg == pytest.approx(100.0)  # 5 * 20
+        assert result.stcg == pytest.approx(100.0)  # 5 * 20
 
 
 # ── LotTracker: Wash Sale ─────────────────────────────────────────────────────

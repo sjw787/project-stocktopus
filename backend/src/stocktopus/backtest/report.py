@@ -143,8 +143,8 @@ def render_report(
     # ── Per-regime table ──────────────────────────────────────────────────────
     regime_rows = "".join(
         f"<tr><td>{r}</td><td>{d['trades']}</td>"
-        f"<td class=\"{'win' if d['win_rate'] >= 0.5 else 'loss'}\">{d['win_rate']*100:.1f}%</td>"
-        f"<td class=\"{'win' if d['net_pnl'] >= 0 else 'loss'}\">${d['net_pnl']:+.2f}</td></tr>"
+        f'<td class="{"win" if d["win_rate"] >= 0.5 else "loss"}">{d["win_rate"] * 100:.1f}%</td>'
+        f'<td class="{"win" if d["net_pnl"] >= 0 else "loss"}">${d["net_pnl"]:+.2f}</td></tr>'
         for r, d in sorted(metrics.regime_breakdown.items())
     )
     regime_table = (
@@ -164,16 +164,14 @@ def render_report(
         f"<td>{t.qty}</td>"
         f"<td>{t.exit_reason}</td>"
         f"<td>{t.regime}</td>"
-        f"<td class=\"{'win' if t.net_pnl >= 0 else 'loss'}\">${t.net_pnl:+.2f}</td>"
+        f'<td class="{"win" if t.net_pnl >= 0 else "loss"}">${t.net_pnl:+.2f}</td>'
         f"</tr>"
         for t in trades
     )
     trade_table = (
         "<table><thead><tr><th>Entry</th><th>Exit</th><th>Entry $</th><th>Exit $</th>"
         "<th>Qty</th><th>Reason</th><th>Regime</th><th>Net P&amp;L</th></tr></thead>"
-        "<tbody>"
-        + (trade_rows or "<tr><td colspan='8'>No trades in this period</td></tr>")
-        + "</tbody></table>"
+        "<tbody>" + (trade_rows or "<tr><td colspan='8'>No trades in this period</td></tr>") + "</tbody></table>"
     )
 
     pf = metrics.profit_factor

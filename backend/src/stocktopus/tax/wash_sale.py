@@ -45,10 +45,7 @@ class WashSaleDetector:
         transactions chronologically.
         """
         window_end = sell_date + WASH_SALE_WINDOW
-        return any(
-            sell_date < buy_date <= window_end
-            for buy_date in self._buys.get(symbol, [])
-        )
+        return any(sell_date < buy_date <= window_end for buy_date in self._buys.get(symbol, []))
 
     def has_recent_loss_sell(self, symbol: str, before_date: date) -> bool:
         """Return True if there was a loss sell within 30 days before *before_date*.
@@ -57,7 +54,4 @@ class WashSaleDetector:
         buy that would create a wash-sale situation.
         """
         window_start = before_date - WASH_SALE_WINDOW
-        return any(
-            window_start <= sell_date < before_date
-            for sell_date in self._loss_sells.get(symbol, [])
-        )
+        return any(window_start <= sell_date < before_date for sell_date in self._loss_sells.get(symbol, []))

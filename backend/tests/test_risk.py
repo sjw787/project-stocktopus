@@ -190,9 +190,7 @@ class TestLLMAssessmentRequiredCheck:
         assert r.verdict == RiskVerdict.PASSED
 
     def test_blocks_without_regime(self) -> None:
-        ctx = StrategyContext(
-            symbol="SPY", ts=_TS, features=_features(), regime=None
-        )
+        ctx = StrategyContext(symbol="SPY", ts=_TS, features=_features(), regime=None)
         r = LLMAssessmentRequiredCheck().run(ctx, _thesis())
         assert r.verdict == RiskVerdict.FAILED
 
@@ -253,9 +251,7 @@ class TestRiskFilter:
         assert not result.approved
 
     def test_blocked_without_llm_regime(self) -> None:
-        ctx = StrategyContext(
-            symbol="SPY", ts=_TS, features=_features(), regime=None
-        )
+        ctx = StrategyContext(symbol="SPY", ts=_TS, features=_features(), regime=None)
         f = RiskFilter.from_settings()
         result = f.evaluate(ctx, _thesis())
         assert not result.approved
@@ -303,11 +299,12 @@ class TestRiskFilter:
             short_circuit=False,
         )
         ctx = StrategyContext(symbol="SPY", ts=_TS, features=_features(), regime=None)
-        result = f.evaluate(ctx, _ctx(trades_today=5).__class__, _thesis()) if False else \
-            f.evaluate(
-                StrategyContext(symbol="SPY", ts=_TS, features=_features(), regime=None,
-                                trades_today=5),
-                _thesis()
+        result = (
+            f.evaluate(ctx, _ctx(trades_today=5).__class__, _thesis())
+            if False
+            else f.evaluate(
+                StrategyContext(symbol="SPY", ts=_TS, features=_features(), regime=None, trades_today=5), _thesis()
             )
+        )
         assert not result.approved
         assert len(result.results) == 2

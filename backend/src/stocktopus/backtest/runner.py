@@ -36,8 +36,8 @@ from stocktopus.strategies.opening_momentum import OpeningMomentumStrategy
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 # Market hours in UTC (13:30–20:00 for ET summer offset)
-_MARKET_OPEN_UTC = 13 * 60 + 30   # minutes since midnight
-_MARKET_CLOSE_UTC = 20 * 60        # minutes since midnight
+_MARKET_OPEN_UTC = 13 * 60 + 30  # minutes since midnight
+_MARKET_CLOSE_UTC = 20 * 60  # minutes since midnight
 # Force exit 15 minutes before close to avoid last-second fills
 _EOD_EXIT_CUTOFF = _MARKET_CLOSE_UTC - 15
 
@@ -73,11 +73,7 @@ def _compute_features(
     # ── RVOL: relative volume vs trailing 20-bar average ──────────────────────
     start = max(0, idx - 20)
     avg_vol = bars.iloc[start:idx]["volume"].mean() if idx > 0 else float("nan")
-    rvol = (
-        (row["volume"] / avg_vol)
-        if (avg_vol and not np.isnan(avg_vol) and avg_vol > 0)
-        else None
-    )
+    rvol = (row["volume"] / avg_vol) if (avg_vol and not np.isnan(avg_vol) and avg_vol > 0) else None
 
     # ── VWAP: simple running VWAP from session open ───────────────────────────
     session_date = ts.date()
@@ -121,10 +117,7 @@ def _compute_features(
         highs = window["high"].values
         lows = window["low"].values
         prev_closes = bars.iloc[idx - 15 : idx - 1]["close"].values
-        trs = [
-            max(h - lo, abs(h - pc), abs(lo - pc))
-            for h, lo, pc in zip(highs, lows, prev_closes, strict=False)
-        ]
+        trs = [max(h - lo, abs(h - pc), abs(lo - pc)) for h, lo, pc in zip(highs, lows, prev_closes, strict=False)]
         atr_14d = float(np.mean(trs)) if trs else None
         atr_pct = (atr_14d / row["close"] * 100) if (atr_14d and row["close"] > 0) else None
 
@@ -189,18 +182,14 @@ class BacktestRunner:
     ) -> None:
         self.symbol = symbol
         self._bars = intraday_bars.sort_values("ts").reset_index(drop=True)
-        self._daily_bars = (
-            daily_bars.sort_values("ts").reset_index(drop=True) if daily_bars is not None else None
-        )
+        self._daily_bars = daily_bars.sort_values("ts").reset_index(drop=True) if daily_bars is not None else None
         self._regime_map = regime_map or {}
         self._friction = friction or FrictionModel.realistic_alpaca()
         self._capital = initial_capital
         self._initial_capital = initial_capital
         self._position_size_usd = position_size_usd
         self._strategy = OpeningMomentumStrategy()
-        self._risk_filter = risk_filter or RiskFilter.from_settings(
-            max_position_usd=position_size_usd
-        )
+        self._risk_filter = risk_filter or RiskFilter.from_settings(max_position_usd=position_size_usd)
 
     def _get_regime(self, ts: datetime) -> RegimeAssessment | None:
         """Look up the nearest prior regime assessment for the given timestamp."""
@@ -257,7 +246,7 @@ class BacktestRunner:
                 sl_touched = row["low"] <= stop_loss
                 tp_touched = row["high"] >= take_profit
                 eod_exit = bar_minutes >= _EOD_EXIT_CUTOFF
-                is_last_bar = (i == n_bars - 1)
+                is_last_bar = i == n_bars - 1
 
                 if sl_touched or tp_touched or eod_exit or is_last_bar:
                     # Determine exit price (next open if possible, else this bar)
@@ -345,12 +334,8 @@ class BacktestRunner:
                 entry_ts = next_row["ts"]
                 entry_qty = float(qty)
                 # Recalculate SL/TP relative to actual fill price
-                stop_loss = round(
-                    fill_price * (thesis.stop_loss / thesis.entry_price), 4
-                )
-                take_profit = round(
-                    fill_price * (thesis.take_profit / thesis.entry_price), 4
-                )
+                stop_loss = round(fill_price * (thesis.stop_loss / thesis.entry_price), 4)
+                take_profit = round(fill_price * (thesis.take_profit / thesis.entry_price), 4)
                 entry_friction = friction_in
                 entry_regime = str(regime.regime) if regime else "unknown"
                 entry_lean = str(regime.lean) if regime else "unknown"

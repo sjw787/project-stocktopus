@@ -21,6 +21,7 @@ target_metadata = Base.metadata
 _raw_url = os.environ.get("DATABASE_URL", "")
 if not _raw_url:
     from stocktopus.config import get_settings  # noqa: PLC0415
+
     _raw_url = get_settings().database_url
 
 # Ensure we have an asyncpg URL for the async engine.

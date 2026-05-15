@@ -123,9 +123,7 @@ class TestOpeningMomentumStrategy:
         assert thesis is None
 
     def test_no_regime_assessment_returns_none(self) -> None:
-        ctx = StrategyContext(
-            symbol="SPY", ts=_TS_IN_WINDOW, features=_features(), regime=None
-        )
+        ctx = StrategyContext(symbol="SPY", ts=_TS_IN_WINDOW, features=_features(), regime=None)
         assert self.strategy.evaluate(ctx) is None
 
     def test_lean_not_long_returns_none(self) -> None:
@@ -142,9 +140,7 @@ class TestOpeningMomentumStrategy:
         assert thesis is None
 
     def test_disallowed_regime_returns_none(self) -> None:
-        thesis = self.strategy.evaluate(
-            _ctx(regime=_regime(regime=Regime.HIGH_VOLATILITY, lean=TradeLean.LONG))
-        )
+        thesis = self.strategy.evaluate(_ctx(regime=_regime(regime=Regime.HIGH_VOLATILITY, lean=TradeLean.LONG)))
         assert thesis is None
 
     def test_risk_reward_is_positive(self) -> None:

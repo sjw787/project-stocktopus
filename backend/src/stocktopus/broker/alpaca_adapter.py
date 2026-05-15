@@ -82,9 +82,7 @@ class AlpacaBrokerAdapter(BrokerAdapter):
             side=OrderSide(str(order.side).lower().split(".")[-1]),
             qty=float(getattr(order, "qty", 0) or 0),
             filled_qty=float(getattr(order, "filled_qty", 0) or 0),
-            filled_avg_price=(
-                float(order.filled_avg_price) if getattr(order, "filled_avg_price", None) else None
-            ),
+            filled_avg_price=(float(order.filled_avg_price) if getattr(order, "filled_avg_price", None) else None),
             status=_map_status(str(getattr(order, "status", "pending"))),
             submitted_at=submitted if isinstance(submitted, datetime) else datetime.now(UTC),
             filled_at=filled_at if isinstance(filled_at, datetime) else None,
@@ -179,9 +177,7 @@ class AlpacaBrokerAdapter(BrokerAdapter):
         if pos is None:
             return None
         side = OrderSide.SELL if pos.qty > 0 else OrderSide.BUY
-        return await self.place_order(
-            OrderRequest(symbol=symbol, side=side, qty=abs(pos.qty))
-        )
+        return await self.place_order(OrderRequest(symbol=symbol, side=side, qty=abs(pos.qty)))
 
     async def close_all_positions(self) -> list[OrderResult]:
         results: list[OrderResult] = []

@@ -67,11 +67,15 @@ class AlpacaMarketData(MarketDataProvider):
             timeframe=tf,
             start=start,
             end=end,
-            **( {"feed": self._data_feed} if self._data_feed else {}),
+            **({"feed": self._data_feed} if self._data_feed else {}),
         )
         logger.debug(
             "Fetching candles",
-            symbol=symbol, tf=timeframe, start=start, end=end, feed=self._data_feed,
+            symbol=symbol,
+            tf=timeframe,
+            start=start,
+            end=end,
+            feed=self._data_feed,
         )
         # Alpaca's historical client is synchronous; run in thread to avoid blocking the loop.
         bars = await asyncio.to_thread(self._client.get_stock_bars, request)

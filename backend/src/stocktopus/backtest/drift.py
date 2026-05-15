@@ -27,7 +27,7 @@ class DriftMetrics:
 
     n_trades: int
     win_rate: float  # fraction 0–1
-    avg_win: float   # USD
+    avg_win: float  # USD
     avg_loss: float  # USD (negative)
     profit_factor: float
     expectancy: float  # USD per trade
@@ -120,8 +120,12 @@ class DriftChecker:
 
         if not trades:
             return DriftMetrics(
-                n_trades=0, win_rate=0.0, avg_win=0.0, avg_loss=0.0,
-                profit_factor=0.0, expectancy=0.0,
+                n_trades=0,
+                win_rate=0.0,
+                avg_win=0.0,
+                avg_loss=0.0,
+                profit_factor=0.0,
+                expectancy=0.0,
             )
 
         pnls = [float(r.realized_pnl or 0) for r in trades]
@@ -157,13 +161,10 @@ class DriftChecker:
 
         if metrics.is_sufficient:
             if metrics.win_rate < self._min_win_rate:
-                alarm_reasons.append(
-                    f"win_rate {metrics.win_rate:.1%} < threshold {self._min_win_rate:.1%}"
-                )
+                alarm_reasons.append(f"win_rate {metrics.win_rate:.1%} < threshold {self._min_win_rate:.1%}")
             if metrics.profit_factor < self._min_profit_factor:
                 alarm_reasons.append(
-                    f"profit_factor {metrics.profit_factor:.2f} < threshold "
-                    f"{self._min_profit_factor:.2f}"
+                    f"profit_factor {metrics.profit_factor:.2f} < threshold {self._min_profit_factor:.2f}"
                 )
 
         alarm_active = bool(alarm_reasons)

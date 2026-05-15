@@ -1,6 +1,5 @@
 """Unit tests for features/compute.py — pure functions, no DB required."""
 
-
 import pytest
 
 from stocktopus.features.compute import (

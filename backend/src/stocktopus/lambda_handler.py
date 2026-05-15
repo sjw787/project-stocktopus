@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import UTC
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,7 @@ def _bootstrap_secrets() -> None:
         return  # Local dev — all values come from .env
 
     import boto3
+
     client = boto3.client("secretsmanager")
 
     def _get(arn: str) -> dict:
@@ -75,8 +77,10 @@ def _load_api_key(client: Any, arn: str | None, env_var: str, field: str) -> Non
         return
     try:
         import json
+
         secret = json.loads(client.get_secret_value(SecretId=arn)["SecretString"])
         import os
+
         os.environ[env_var] = secret.get(field, "")
     except Exception:
         logger.exception("Failed to load secret %s into %s", arn, env_var)
@@ -144,7 +148,7 @@ async def _run_ingestion_tick() -> dict[str, Any]:
         logger.info("Ingestion schedule disabled — skipping")
         return {"status": "skipped", "reason": "schedule disabled"}
 
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from stocktopus.config import get_settings
     from stocktopus.db.engine import AsyncSessionFactory
@@ -152,7 +156,7 @@ async def _run_ingestion_tick() -> dict[str, Any]:
     from stocktopus.ingestion.candle_ingest import backfill
 
     settings = get_settings()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     start = now - timedelta(hours=2)
 
     provider = _make_provider(settings)
@@ -182,12 +186,14 @@ def _make_provider(settings: Any, name: str = "auto") -> Any:
     use_alpaca = (name in ("alpaca", "auto")) and bool(settings.alpaca_api_key)
     if use_alpaca:
         from stocktopus.ingestion.alpaca_market_data import AlpacaMarketData
+
         return AlpacaMarketData(
             api_key=settings.alpaca_api_key,
             secret_key=settings.alpaca_secret_key,
             data_feed=settings.alpaca_data_feed or "",
         )
     from stocktopus.ingestion.yahoo_market_data import YahooFinanceMarketData
+
     return YahooFinanceMarketData()
 
 
@@ -204,19 +210,19 @@ async def _run_backfill(event: dict[str, Any]) -> dict[str, Any]:
       timeframes – list of strings; default: ["1m", "5m", "1d"]
       provider  – "alpaca" | "yahoo"; default: "auto" (alpaca if key present)
     """
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from stocktopus.config import get_settings
     from stocktopus.db.engine import AsyncSessionFactory
     from stocktopus.ingestion.candle_ingest import backfill
 
     settings = get_settings()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     from_str = event.get("from_date")
     to_str = event.get("to_date")
-    start = datetime.strptime(from_str, "%Y-%m-%d").replace(tzinfo=timezone.utc) if from_str else now - timedelta(days=365)
-    end = datetime.strptime(to_str, "%Y-%m-%d").replace(tzinfo=timezone.utc) if to_str else now
+    start = datetime.strptime(from_str, "%Y-%m-%d").replace(tzinfo=UTC) if from_str else now - timedelta(days=365)
+    end = datetime.strptime(to_str, "%Y-%m-%d").replace(tzinfo=UTC) if to_str else now
 
     symbols_raw = event.get("symbol")
     symbols = [symbols_raw.upper()] if symbols_raw else [s.upper() for s in settings.allowed_symbols]
@@ -228,10 +234,12 @@ async def _run_backfill(event: dict[str, Any]) -> dict[str, Any]:
     results: dict[str, Any] = {}
     async with AsyncSessionFactory() as session:
         for symbol in symbols:
-            logger.info("Backfilling %s from %s to %s [%s] via %s",
-                        symbol, start.date(), end.date(), timeframes, provider_name)
-            counts = await backfill(session, provider=provider, symbol=symbol,
-                                    start=start, end=end, timeframes=timeframes)
+            logger.info(
+                "Backfilling %s from %s to %s [%s] via %s", symbol, start.date(), end.date(), timeframes, provider_name
+            )
+            counts = await backfill(
+                session, provider=provider, symbol=symbol, start=start, end=end, timeframes=timeframes
+            )
             await session.commit()
             results[symbol] = counts
             logger.info("Backfill %s complete: %s", symbol, counts)
@@ -244,7 +252,7 @@ async def _run_backfill(event: dict[str, Any]) -> dict[str, Any]:
 
 async def _run_context_tick() -> dict[str, Any]:
     """Snapshot broad-market prices into market_context."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from stocktopus.config import get_settings
     from stocktopus.db.engine import AsyncSessionFactory
@@ -252,7 +260,7 @@ async def _run_context_tick() -> dict[str, Any]:
 
     settings = get_settings()
     provider = _make_provider(settings)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     async with AsyncSessionFactory() as session:
         row = await snapshot_market_context(session, provider, now)
@@ -273,23 +281,23 @@ async def _run_news_ingest(event: dict[str, Any]) -> dict[str, Any]:
       from_date – ISO date "YYYY-MM-DD"; default: 3 days ago
       to_date   – ISO date "YYYY-MM-DD"; default: today
     """
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from stocktopus.config import get_settings
     from stocktopus.db.engine import AsyncSessionFactory
     from stocktopus.ingestion.finnhub_news import FinnhubNewsProvider
-    from stocktopus.ingestion.news_ingest import ingest_news, ingest_macro_events
+    from stocktopus.ingestion.news_ingest import ingest_macro_events, ingest_news
 
     settings = get_settings()
     if not settings.finnhub_api_key:
         logger.error("FINNHUB_API_KEY not set — cannot run news ingestion")
         return {"status": "error", "message": "finnhub api key not configured"}
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     from_str = event.get("from_date")
     to_str = event.get("to_date")
-    start = datetime.strptime(from_str, "%Y-%m-%d").replace(tzinfo=timezone.utc) if from_str else now - timedelta(days=3)
-    end = datetime.strptime(to_str, "%Y-%m-%d").replace(tzinfo=timezone.utc) if to_str else now
+    start = datetime.strptime(from_str, "%Y-%m-%d").replace(tzinfo=UTC) if from_str else now - timedelta(days=3)
+    end = datetime.strptime(to_str, "%Y-%m-%d").replace(tzinfo=UTC) if to_str else now
 
     symbols_raw = event.get("symbols")
     symbols = [s.upper() for s in symbols_raw] if symbols_raw else [s.upper() for s in settings.allowed_symbols]

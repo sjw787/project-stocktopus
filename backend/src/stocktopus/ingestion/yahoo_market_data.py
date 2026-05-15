@@ -57,7 +57,10 @@ class YahooFinanceMarketData(MarketDataProvider):
 
         logger.debug(
             "Fetching candles via Yahoo Finance",
-            symbol=symbol, tf=timeframe, start=start.date(), end=end.date(),
+            symbol=symbol,
+            tf=timeframe,
+            start=start.date(),
+            end=end.date(),
         )
 
         # yfinance Ticker.history is synchronous — run in thread.
@@ -75,7 +78,8 @@ class YahooFinanceMarketData(MarketDataProvider):
             if df.empty:
                 logger.warning(
                     "No bars returned from Yahoo Finance",
-                    symbol=symbol, tf=timeframe,
+                    symbol=symbol,
+                    tf=timeframe,
                 )
                 return []
 
@@ -111,9 +115,7 @@ class YahooFinanceMarketData(MarketDataProvider):
         symbols: list[str],
         timeframe: str,
     ) -> AsyncIterator[Candle]:
-        raise NotImplementedError(
-            "Yahoo Finance does not support live streaming. Use AlpacaMarketData for live data."
-        )
+        raise NotImplementedError("Yahoo Finance does not support live streaming. Use AlpacaMarketData for live data.")
 
     async def get_latest_quote(self, symbol: str) -> dict[str, float]:
         """Returns last close as both bid and ask (no real-time quote available)."""

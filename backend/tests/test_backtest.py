@@ -89,8 +89,11 @@ class TestBacktestTrade:
 
     def test_net_pnl_deducts_friction(self) -> None:
         t = self._trade(
-            entry=500.0, exit_price=510.0, qty=1.0,
-            entry_friction=1.0, exit_friction=2.0,
+            entry=500.0,
+            exit_price=510.0,
+            qty=1.0,
+            entry_friction=1.0,
+            exit_friction=2.0,
         )
         assert t.net_pnl == pytest.approx(7.0)
 
@@ -353,9 +356,7 @@ class TestDriftChecker:
         from stocktopus.backtest.drift import DriftChecker
 
         # 6 wins of $10, 4 losses of $5 → win_rate=60%, PF=3.0
-        rows = [{"pnl": 10.0, "regime": "trending_up"}] * 6 + [
-            {"pnl": -5.0, "regime": "ranging"}
-        ] * 4
+        rows = [{"pnl": 10.0, "regime": "trending_up"}] * 6 + [{"pnl": -5.0, "regime": "ranging"}] * 4
         checker = DriftChecker(min_win_rate=0.40, min_profit_factor=1.0)
         session = self._make_session(rows)
         status = await checker.check(session)
@@ -369,9 +370,7 @@ class TestDriftChecker:
         from stocktopus.backtest.drift import DriftChecker
 
         # 3 wins, 7 losses → win_rate = 30%, below 40% threshold
-        rows = [{"pnl": 10.0, "regime": "trending_up"}] * 3 + [
-            {"pnl": -5.0, "regime": "ranging"}
-        ] * 7
+        rows = [{"pnl": 10.0, "regime": "trending_up"}] * 3 + [{"pnl": -5.0, "regime": "ranging"}] * 7
         checker = DriftChecker(min_win_rate=0.40, min_profit_factor=1.0)
         session = self._make_session(rows)
         status = await checker.check(session)
@@ -384,9 +383,7 @@ class TestDriftChecker:
         from stocktopus.backtest.drift import DriftChecker
 
         # 5 wins of $2, 5 losses of $8 → PF = 10/40 = 0.25
-        rows = [{"pnl": 2.0, "regime": "trending_up"}] * 5 + [
-            {"pnl": -8.0, "regime": "ranging"}
-        ] * 5
+        rows = [{"pnl": 2.0, "regime": "trending_up"}] * 5 + [{"pnl": -8.0, "regime": "ranging"}] * 5
         checker = DriftChecker(min_win_rate=0.30, min_profit_factor=1.0)
         session = self._make_session(rows)
         status = await checker.check(session)
@@ -411,9 +408,7 @@ class TestDriftChecker:
     async def test_summary_returns_string(self) -> None:
         from stocktopus.backtest.drift import DriftChecker
 
-        rows = [{"pnl": 10.0, "regime": "trending_up"}] * 6 + [
-            {"pnl": -5.0, "regime": "ranging"}
-        ] * 4
+        rows = [{"pnl": 10.0, "regime": "trending_up"}] * 6 + [{"pnl": -5.0, "regime": "ranging"}] * 4
         checker = DriftChecker()
         session = self._make_session(rows)
         status = await checker.check(session)

@@ -66,11 +66,7 @@ async def _upsert_articles(session: AsyncSession, articles: list[NewsArticle]) -
         for article in articles
     ]
 
-    stmt = (
-        insert(NewsEvent)
-        .values(rows)
-        .on_conflict_do_nothing(constraint="uq_news_events_dedup_hash")
-    )
+    stmt = insert(NewsEvent).values(rows).on_conflict_do_nothing(constraint="uq_news_events_dedup_hash")
     result = await session.execute(stmt)
     await session.commit()
     inserted = result.rowcount

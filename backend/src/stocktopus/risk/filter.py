@@ -51,7 +51,7 @@ class FilterResult(BaseModel):
     def summary(self) -> str:
         if self.approved:
             warns = len(self.warnings)
-            return f"APPROVED ({"no warnings" if not warns else f"{warns} warning(s)"})"
+            return f"APPROVED ({'no warnings' if not warns else f'{warns} warning(s)'})"
         reasons = "; ".join(r.reason for r in self.rejections)
         return f"REJECTED: {reasons}"
 

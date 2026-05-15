@@ -78,16 +78,8 @@ def generate_summary(
     if tax_year:
         lots = [lot for lot in lots if lot.sell_date and lot.sell_date.year == tax_year]
 
-    stcg = sum(
-        lot.realized_pnl_total or 0.0
-        for lot in lots
-        if lot.holding_days < 365
-    )
-    ltcg = sum(
-        lot.realized_pnl_total or 0.0
-        for lot in lots
-        if lot.holding_days >= 365
-    )
+    stcg = sum(lot.realized_pnl_total or 0.0 for lot in lots if lot.holding_days < 365)
+    ltcg = sum(lot.realized_pnl_total or 0.0 for lot in lots if lot.holding_days >= 365)
     total_proceeds = sum((lot.sell_price or 0.0) * lot.qty for lot in lots)
     total_basis = sum(lot.cost_basis * lot.qty for lot in lots)
     wash_disallowed = sum(lot.disallowed_loss * lot.qty for lot in lots)

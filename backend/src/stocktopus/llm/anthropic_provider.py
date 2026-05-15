@@ -52,9 +52,7 @@ class AnthropicProvider(LLMProvider):
 
         # If JSON output is requested, append a reminder in the system prompt.
         if response_schema is not None:
-            system_parts.append(
-                "Respond with valid JSON only. Do not include markdown fences."
-            )
+            system_parts.append("Respond with valid JSON only. Do not include markdown fences.")
 
         kwargs: dict = dict(
             model=model,
@@ -84,6 +82,4 @@ class AnthropicProvider(LLMProvider):
 
     def _calc_cost(self, prompt_tokens: int, completion_tokens: int, model: str) -> float:
         pricing = _PRICING.get(model, _FALLBACK_PRICING)
-        return (
-            prompt_tokens * pricing["input"] + completion_tokens * pricing["output"]
-        ) / 1_000_000
+        return (prompt_tokens * pricing["input"] + completion_tokens * pricing["output"]) / 1_000_000

@@ -83,11 +83,7 @@ async def _upsert_candles(session: AsyncSession, candles: list[Candle]) -> int:
         for c in candles
     ]
 
-    stmt = (
-        insert(CandleRow)
-        .values(rows)
-        .on_conflict_do_nothing(index_elements=["symbol", "timeframe", "ts"])
-    )
+    stmt = insert(CandleRow).values(rows).on_conflict_do_nothing(index_elements=["symbol", "timeframe", "ts"])
     result = await session.execute(stmt)
     await session.commit()
     return max(0, result.rowcount)

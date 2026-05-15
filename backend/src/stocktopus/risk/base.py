@@ -19,7 +19,7 @@ from stocktopus.strategies.base import StrategyContext
 class RiskVerdict(StrEnum):
     PASSED = "passed"
     FAILED = "failed"
-    WARNED = "warned"   # trade allowed but with a logged warning
+    WARNED = "warned"  # trade allowed but with a logged warning
 
 
 class RiskResult(BaseModel):

@@ -23,6 +23,7 @@ def test_to_utc_naive_datetime_gets_utc_tzinfo() -> None:
 
 def test_to_utc_aware_datetime_converted_to_utc() -> None:
     from datetime import timedelta, timezone
+
     et = timezone(timedelta(hours=-5))
     aware = datetime(2024, 1, 2, 9, 30, tzinfo=et)
     result = _to_utc(aware)
@@ -109,8 +110,11 @@ async def test_get_candles_maps_timeframe_to_yfinance_interval() -> None:
 
     # "1h" should be mapped to "60m" for yfinance
     _, kwargs = ticker_mock.history.call_args
-    assert kwargs.get("interval") == "60m" or ticker_mock.history.call_args[0][0] == "60m" or \
-        ticker_mock.history.call_args_list[0].kwargs.get("interval") == "60m"
+    assert (
+        kwargs.get("interval") == "60m"
+        or ticker_mock.history.call_args[0][0] == "60m"
+        or ticker_mock.history.call_args_list[0].kwargs.get("interval") == "60m"
+    )
 
 
 @pytest.mark.asyncio

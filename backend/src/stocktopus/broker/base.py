@@ -73,7 +73,7 @@ class Position:
     """An open position as reported by the broker."""
 
     symbol: str
-    qty: float          # positive = long, negative = short
+    qty: float  # positive = long, negative = short
     avg_entry_price: float
     current_price: float
     unrealized_pnl: float

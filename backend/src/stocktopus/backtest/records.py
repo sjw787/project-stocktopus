@@ -10,7 +10,7 @@ from enum import StrEnum
 class ExitReason(StrEnum):
     STOP_LOSS = "stop_loss"
     TAKE_PROFIT = "take_profit"
-    TIME_EXIT = "time_exit"      # end-of-day or max-hold forced exit
+    TIME_EXIT = "time_exit"  # end-of-day or max-hold forced exit
     SIGNAL_EXIT = "signal_exit"  # strategy reversed
 
 

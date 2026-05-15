@@ -47,9 +47,7 @@ def _load_prompt_template() -> str:
         candidate = path.parents[depth] / "prompts" / "research_director" / "v1.md"
         if candidate.exists():
             return candidate.read_text()
-    raise FileNotFoundError(
-        f"prompt template not found; tried parents[2..4] of {path}"
-    )
+    raise FileNotFoundError(f"prompt template not found; tried parents[2..4] of {path}")
 
 
 _PROMPT_TEMPLATE = _load_prompt_template()
@@ -74,9 +72,7 @@ async def _get_daily_cost(session: AsyncSession) -> float:
     """Sum LLM costs for today from llm_logs."""
     today_start = datetime.now(tz=UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     result = await session.execute(
-        select(func.coalesce(func.sum(LLMLog.cost_usd), 0.0)).where(
-            LLMLog.ts >= today_start
-        )
+        select(func.coalesce(func.sum(LLMLog.cost_usd), 0.0)).where(LLMLog.ts >= today_start)
     )
     return float(result.scalar_one())
 
@@ -108,13 +104,17 @@ async def _get_news_summary(session: AsyncSession, hours: int = 4) -> str:
 async def _get_tax_context(session: AsyncSession, symbol: str) -> str:
     """Return a brief tax-awareness note based on open lots."""
     rows = (
-        await session.execute(
-            select(TradeLot)
-            .where(TradeLot.symbol == symbol, TradeLot.exit_date.is_(None))
-            .order_by(TradeLot.entry_date.asc())
-            .limit(5)
+        (
+            await session.execute(
+                select(TradeLot)
+                .where(TradeLot.symbol == symbol, TradeLot.exit_date.is_(None))
+                .order_by(TradeLot.entry_date.asc())
+                .limit(5)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     if not rows:
         return "No open lots. No wash-sale or STCG concerns."
@@ -227,9 +227,7 @@ class ResearchDirector:
         # ── Load feature snapshot ─────────────────────────────────────────────
         if feature_snapshot_id:
             snap = (
-                await session.execute(
-                    select(FeatureSnapshot).where(FeatureSnapshot.id == feature_snapshot_id)
-                )
+                await session.execute(select(FeatureSnapshot).where(FeatureSnapshot.id == feature_snapshot_id))
             ).scalar_one_or_none()
         else:
             snap = (
@@ -243,8 +241,7 @@ class ResearchDirector:
 
         if snap is None:
             raise RuntimeError(
-                f"No feature snapshot found for {symbol}. "
-                "Run `stocktopus features compute --symbol {symbol}` first."
+                f"No feature snapshot found for {symbol}. Run `stocktopus features compute --symbol {{symbol}}` first."
             )
 
         fv_data = {k: v for k, v in snap.features.items() if k not in ("symbol", "ts")}
@@ -336,8 +333,7 @@ class ResearchDirector:
 
         if not parsed_ok:
             raise RuntimeError(
-                f"LLM failed to return a valid RegimeAssessment after {MAX_RETRIES} attempts. "
-                f"Last error: {last_error}"
+                f"LLM failed to return a valid RegimeAssessment after {MAX_RETRIES} attempts. Last error: {last_error}"
             )
 
         # Populate audit metadata from llm_response.

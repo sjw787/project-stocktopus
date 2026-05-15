@@ -4,16 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import urllib.parse
 import urllib.request
-import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from loguru import logger
 
 from stocktopus.providers.news import NewsArticle, NewsCategory, NewsProvider
-
 
 _FINNHUB_BASE = "https://finnhub.io/api/v1"
 
@@ -88,11 +87,11 @@ class FinnhubNewsProvider(NewsProvider):
             ts_raw = item.get("datetime") or item.get("timestamp")
             if ts_raw:
                 try:
-                    published_at = datetime.fromtimestamp(int(ts_raw), tz=timezone.utc)
+                    published_at = datetime.fromtimestamp(int(ts_raw), tz=UTC)
                 except (ValueError, TypeError):
-                    published_at = datetime.now(tz=timezone.utc)
+                    published_at = datetime.now(tz=UTC)
             else:
-                published_at = datetime.now(tz=timezone.utc)
+                published_at = datetime.now(tz=UTC)
 
             related = item.get("related") or ""
             symbols = [s.strip().upper() for s in related.split(",") if s.strip()] if related else []
