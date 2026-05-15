@@ -236,7 +236,7 @@ class BacktestRequest(BaseModel):
     timeframe: str = "5m"
 
 
-_MAX_BACKTEST_DAYS = 30
+_MAX_BACKTEST_DAYS = 60
 
 
 class BacktestTradeOut(BaseModel):

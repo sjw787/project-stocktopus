@@ -45,7 +45,7 @@ class OpenAIProvider(LLMProvider):
             model=model,
             messages=[{"role": m.role, "content": m.content} for m in messages],
             temperature=temperature,
-            max_tokens=max_tokens,
+            max_completion_tokens=max_tokens,
         )
         if response_schema is not None:
             # Structured JSON output — ask the model to respond with valid JSON only.
