@@ -4,6 +4,12 @@ variable "environment" {
   default     = "prod"
 }
 
+variable "owner" {
+  description = "Resource owner (applied to all resources via default_tags for cost attribution)"
+  type        = string
+  default     = "sam"
+}
+
 variable "aws_region" {
   description = "AWS region"
   type        = string

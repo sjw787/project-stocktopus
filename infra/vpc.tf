@@ -5,7 +5,7 @@ resource "aws_vpc" "main" {
   enable_dns_support   = true
   enable_dns_hostnames = true
 
-  tags = { Name = "${local.name_prefix}-vpc" }
+  tags = merge(local.component_tags.networking, { Name = "${local.name_prefix}-vpc" })
 }
 
 resource "aws_subnet" "public" {
@@ -15,7 +15,7 @@ resource "aws_subnet" "public" {
   availability_zone       = local.azs[count.index]
   map_public_ip_on_launch = true
 
-  tags = { Name = "${local.name_prefix}-public-${count.index}" }
+  tags = merge(local.component_tags.networking, { Name = "${local.name_prefix}-public-${count.index}" })
 }
 
 resource "aws_subnet" "private_lambda" {
@@ -24,7 +24,7 @@ resource "aws_subnet" "private_lambda" {
   cidr_block        = cidrsubnet(var.vpc_cidr, 8, 10 + count.index)
   availability_zone = local.azs[count.index]
 
-  tags = { Name = "${local.name_prefix}-private-lambda-${count.index}" }
+  tags = merge(local.component_tags.networking, { Name = "${local.name_prefix}-private-lambda-${count.index}" })
 }
 
 resource "aws_subnet" "private_db" {
@@ -33,14 +33,14 @@ resource "aws_subnet" "private_db" {
   cidr_block        = cidrsubnet(var.vpc_cidr, 8, 20 + count.index)
   availability_zone = local.azs[count.index]
 
-  tags = { Name = "${local.name_prefix}-private-db-${count.index}" }
+  tags = merge(local.component_tags.networking, { Name = "${local.name_prefix}-private-db-${count.index}" })
 }
 
 # ── Internet Gateway ──────────────────────────────────────────────────────────
 
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
-  tags   = { Name = "${local.name_prefix}-igw" }
+  tags   = merge(local.component_tags.networking, { Name = "${local.name_prefix}-igw" })
 }
 
 resource "aws_route_table" "public" {
@@ -51,7 +51,7 @@ resource "aws_route_table" "public" {
     gateway_id = aws_internet_gateway.main.id
   }
 
-  tags = { Name = "${local.name_prefix}-public-rt" }
+  tags = merge(local.component_tags.networking, { Name = "${local.name_prefix}-public-rt" })
 }
 
 resource "aws_route_table_association" "public" {
@@ -64,13 +64,13 @@ resource "aws_route_table_association" "public" {
 
 resource "aws_eip" "nat" {
   domain = "vpc"
-  tags   = { Name = "${local.name_prefix}-nat-eip" }
+  tags   = merge(local.component_tags.networking, { Name = "${local.name_prefix}-nat-eip" })
 }
 
 resource "aws_nat_gateway" "main" {
   allocation_id = aws_eip.nat.id
   subnet_id     = aws_subnet.public[0].id
-  tags          = { Name = "${local.name_prefix}-nat" }
+  tags          = merge(local.component_tags.networking, { Name = "${local.name_prefix}-nat" })
   depends_on    = [aws_internet_gateway.main]
 }
 
@@ -82,7 +82,7 @@ resource "aws_route_table" "private" {
     nat_gateway_id = aws_nat_gateway.main.id
   }
 
-  tags = { Name = "${local.name_prefix}-private-rt" }
+  tags = merge(local.component_tags.networking, { Name = "${local.name_prefix}-private-rt" })
 }
 
 resource "aws_route_table_association" "private_lambda" {
@@ -112,7 +112,7 @@ resource "aws_security_group" "lambda" {
     description = "Allow all outbound (external APIs + RDS Proxy)"
   }
 
-  tags = { Name = "${local.name_prefix}-lambda-sg" }
+  tags = merge(local.component_tags.networking, { Name = "${local.name_prefix}-lambda-sg" })
 }
 
 resource "aws_security_group" "aurora" {
@@ -135,5 +135,5 @@ resource "aws_security_group" "aurora" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = { Name = "${local.name_prefix}-aurora-sg" }
+  tags = merge(local.component_tags.networking, { Name = "${local.name_prefix}-aurora-sg" })
 }

@@ -155,6 +155,7 @@ resource "aws_iam_role" "github_actions" {
   count              = var.github_repo_slug != "" ? 1 : 0
   name               = "${local.name_prefix}-github-actions"
   assume_role_policy = data.aws_iam_policy_document.github_actions_assume[0].json
+  tags               = merge(local.component_tags.cicd, { Name = "${local.name_prefix}-github-actions" })
 }
 
 resource "aws_iam_role_policy" "github_actions_deploy" {

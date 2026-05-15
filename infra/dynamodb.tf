@@ -18,5 +18,5 @@ resource "aws_dynamodb_table" "settings" {
     enabled = true
   }
 
-  tags = { Name = "${local.name_prefix}-settings" }
+  tags = merge(local.component_tags.database, { Name = "${local.name_prefix}-settings" })
 }

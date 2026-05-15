@@ -1,5 +1,6 @@
 resource "aws_scheduler_schedule_group" "main" {
   name = local.name_prefix
+  tags = merge(local.component_tags.scheduling, { Name = local.name_prefix })
 }
 
 locals {

@@ -11,7 +11,7 @@ resource "aws_acm_certificate" "api" {
     create_before_destroy = true
   }
 
-  tags = { Name = "${local.name_prefix}-cert" }
+  tags = merge(local.component_tags.dns, { Name = "${local.name_prefix}-cert" })
 }
 
 resource "aws_acm_certificate_validation" "api" {

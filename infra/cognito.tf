@@ -41,7 +41,7 @@ resource "aws_cognito_user_pool" "main" {
     }
   }
 
-  tags = { Name = local.name_prefix }
+  tags = merge(local.component_tags.auth, { Name = local.name_prefix })
 }
 
 # Web client (SPA / Amplify frontend) — PKCE code flow, no client secret

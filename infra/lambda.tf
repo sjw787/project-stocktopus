@@ -7,11 +7,13 @@ locals {
 resource "aws_cloudwatch_log_group" "lambda" {
   name              = "/aws/lambda/${local.name_prefix}"
   retention_in_days = 90
+  tags              = local.component_tags.observability
 }
 
 resource "aws_cloudwatch_log_group" "lambda_migrate" {
   name              = "/aws/lambda/${local.name_prefix}-migrate"
   retention_in_days = 30
+  tags              = local.component_tags.observability
 }
 
 # ── App Lambda ─────────────────────────────────────────────────────────────────
@@ -45,6 +47,8 @@ resource "aws_lambda_function" "app" {
     aws_iam_role_policy.lambda_dynamodb,
     aws_iam_role_policy.lambda_secrets,
   ]
+
+  tags = merge(local.component_tags.compute, { Name = local.name_prefix })
 }
 
 # ── Migration Lambda (same image, different CMD) ───────────────────────────────
@@ -79,6 +83,8 @@ resource "aws_lambda_function" "migrate" {
   depends_on = [
     aws_cloudwatch_log_group.lambda_migrate,
   ]
+
+  tags = merge(local.component_tags.compute, { Name = "${local.name_prefix}-migrate" })
 }
 
 # ── Permissions ────────────────────────────────────────────────────────────────

@@ -8,6 +8,7 @@ locals {
 resource "aws_route53_zone" "main" {
   count = var.create_hosted_zone ? 1 : 0
   name  = var.domain_name
+  tags  = merge(local.component_tags.dns, { Name = var.domain_name })
 }
 
 # ACM DNS validation records

@@ -2,7 +2,7 @@ resource "aws_db_subnet_group" "aurora" {
   name       = local.name_prefix
   subnet_ids = aws_subnet.private_db[*].id
 
-  tags = { Name = "${local.name_prefix}-aurora-subnet-group" }
+  tags = merge(local.component_tags.database, { Name = "${local.name_prefix}-aurora-subnet-group" })
 }
 
 resource "aws_rds_cluster" "aurora" {
@@ -33,7 +33,7 @@ resource "aws_rds_cluster" "aurora" {
   skip_final_snapshot = var.environment != "prod"
   deletion_protection = var.environment == "prod"
 
-  tags = { Name = "${local.name_prefix}-aurora" }
+  tags = merge(local.component_tags.database, { Name = "${local.name_prefix}-aurora" })
 }
 
 resource "aws_rds_cluster_instance" "aurora" {
@@ -44,10 +44,11 @@ resource "aws_rds_cluster_instance" "aurora" {
   engine_version       = aws_rds_cluster.aurora.engine_version
   db_subnet_group_name = aws_db_subnet_group.aurora.name
 
-  tags = { Name = "${local.name_prefix}-aurora-instance" }
+  tags = merge(local.component_tags.database, { Name = "${local.name_prefix}-aurora-instance" })
 }
 
 resource "aws_cloudwatch_log_group" "aurora" {
   name              = "/aws/rds/cluster/${local.name_prefix}/postgresql"
   retention_in_days = 14
+  tags              = local.component_tags.observability
 }

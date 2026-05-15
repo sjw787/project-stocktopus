@@ -13,6 +13,8 @@ resource "aws_api_gateway_rest_api" "app" {
 
   # Allow all binary content types so Lambda can handle file responses
   binary_media_types = ["*/*"]
+
+  tags = merge(local.component_tags.api, { Name = local.name_prefix })
 }
 
 # ── Cognito authorizer ────────────────────────────────────────────────────────
@@ -166,6 +168,7 @@ resource "aws_api_gateway_account" "main" {
 resource "aws_cloudwatch_log_group" "api_gateway" {
   name              = "/aws/apigateway/${local.name_prefix}"
   retention_in_days = 30
+  tags              = local.component_tags.observability
 }
 
 # ── Deployment + stage ────────────────────────────────────────────────────────
@@ -225,6 +228,8 @@ resource "aws_api_gateway_stage" "prod" {
   }
 
   depends_on = [aws_api_gateway_account.main]
+
+  tags = merge(local.component_tags.api, { Name = "${local.name_prefix}-prod" })
 }
 
 resource "aws_api_gateway_method_settings" "all" {
@@ -252,6 +257,8 @@ resource "aws_api_gateway_domain_name" "api" {
   endpoint_configuration {
     types = ["REGIONAL"]
   }
+
+  tags = merge(local.component_tags.dns, { Name = var.api_subdomain })
 }
 
 resource "aws_api_gateway_base_path_mapping" "api" {

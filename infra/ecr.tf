@@ -6,7 +6,7 @@ resource "aws_ecr_repository" "app" {
     scan_on_push = true
   }
 
-  tags = { Name = local.name_prefix }
+  tags = merge(local.component_tags.compute, { Name = local.name_prefix })
 }
 
 resource "aws_ecr_repository_policy" "app" {

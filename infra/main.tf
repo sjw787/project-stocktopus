@@ -24,6 +24,7 @@ provider "aws" {
       Project     = "stocktopus"
       Environment = var.environment
       ManagedBy   = "terraform"
+      Owner       = var.owner
     }
   }
 }
@@ -61,5 +62,19 @@ locals {
     Project     = local.app_name
     Environment = var.environment
     ManagedBy   = "terraform"
+  }
+
+  component_tags = {
+    compute       = { Component = "compute" }
+    api           = { Component = "api" }
+    database      = { Component = "database" }
+    networking    = { Component = "networking" }
+    auth          = { Component = "auth" }
+    secrets       = { Component = "secrets" }
+    dns           = { Component = "dns" }
+    frontend      = { Component = "frontend" }
+    scheduling    = { Component = "scheduling" }
+    observability = { Component = "observability" }
+    cicd          = { Component = "cicd" }
   }
 }

@@ -1,6 +1,7 @@
 resource "aws_secretsmanager_secret" "openai" {
   name                    = "${local.name_prefix}/openai-api-key"
   recovery_window_in_days = 7
+  tags                    = merge(local.component_tags.secrets, { Name = "${local.name_prefix}/openai" })
 }
 
 resource "aws_secretsmanager_secret_version" "openai" {
@@ -15,6 +16,7 @@ resource "aws_secretsmanager_secret_version" "openai" {
 resource "aws_secretsmanager_secret" "anthropic" {
   name                    = "${local.name_prefix}/anthropic-api-key"
   recovery_window_in_days = 7
+  tags                    = merge(local.component_tags.secrets, { Name = "${local.name_prefix}/anthropic" })
 }
 
 resource "aws_secretsmanager_secret_version" "anthropic" {
@@ -29,6 +31,7 @@ resource "aws_secretsmanager_secret_version" "anthropic" {
 resource "aws_secretsmanager_secret" "alpaca" {
   name                    = "${local.name_prefix}/alpaca"
   recovery_window_in_days = 7
+  tags                    = merge(local.component_tags.secrets, { Name = "${local.name_prefix}/alpaca" })
 }
 
 resource "aws_secretsmanager_secret_version" "alpaca" {
@@ -46,6 +49,7 @@ resource "aws_secretsmanager_secret_version" "alpaca" {
 resource "aws_secretsmanager_secret" "finnhub" {
   name                    = "${local.name_prefix}/finnhub-api-key"
   recovery_window_in_days = 7
+  tags                    = merge(local.component_tags.secrets, { Name = "${local.name_prefix}/finnhub" })
 }
 
 resource "aws_secretsmanager_secret_version" "finnhub" {
@@ -60,6 +64,7 @@ resource "aws_secretsmanager_secret_version" "finnhub" {
 resource "aws_secretsmanager_secret" "newsapi" {
   name                    = "${local.name_prefix}/newsapi-api-key"
   recovery_window_in_days = 7
+  tags                    = merge(local.component_tags.secrets, { Name = "${local.name_prefix}/newsapi" })
 }
 
 resource "aws_secretsmanager_secret_version" "newsapi" {

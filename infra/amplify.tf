@@ -47,7 +47,7 @@ resource "aws_amplify_app" "frontend" {
     VITE_COGNITO_DOMAIN    = "${aws_cognito_user_pool_domain.main.domain}.auth.${var.aws_region}.amazoncognito.com"
   }
 
-  tags = { Name = local.name_prefix }
+  tags = merge(local.component_tags.frontend, { Name = local.name_prefix })
 }
 
 resource "aws_amplify_branch" "main" {
@@ -64,6 +64,8 @@ resource "aws_amplify_branch" "main" {
   environment_variables = {
     VITE_API_URL = var.custom_domain_enabled ? "https://${var.api_subdomain}" : (local.lambda_enabled ? aws_api_gateway_stage.prod[0].invoke_url : "")
   }
+
+  tags = merge(local.component_tags.frontend, { Name = "${local.name_prefix}-${var.github_branch}" })
 }
 
 resource "aws_amplify_domain_association" "main" {
