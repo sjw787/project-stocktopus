@@ -1,9 +1,16 @@
 /** Thin fetch wrapper for the Stocktopus FastAPI backend. */
 
+import { getAccessToken } from "./auth";
+
 const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
+async function authHeaders(): Promise<Record<string, string>> {
+  const token = await getAccessToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`);
+  const res = await fetch(`${BASE}${path}`, { headers: await authHeaders() });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText} — ${path}`);
   return res.json() as Promise<T>;
 }
@@ -11,7 +18,10 @@ async function get<T>(path: string): Promise<T> {
 async function post<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
-    headers: body != null ? { "Content-Type": "application/json" } : {},
+    headers: {
+      ...(body != null ? { "Content-Type": "application/json" } : {}),
+      ...(await authHeaders()),
+    },
     body: body != null ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText} — ${path}`);
