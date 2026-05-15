@@ -150,19 +150,7 @@ async def _run_ingestion_tick() -> dict[str, Any]:
     now = datetime.now(timezone.utc)
     start = now - timedelta(hours=2)
 
-    # Choose provider based on Alpaca key availability
-    if settings.alpaca_api_key:
-        from stocktopus.ingestion.alpaca_market_data import AlpacaMarketData
-
-        provider = AlpacaMarketData(
-            api_key=settings.alpaca_api_key,
-            secret_key=settings.alpaca_secret_key,
-            feed=settings.alpaca_data_feed or None,
-        )
-    else:
-        from stocktopus.ingestion.yahoo_market_data import YahooFinanceMarketData
-
-        provider = YahooFinanceMarketData()
+    provider = _make_provider(settings)
 
     results: dict[str, Any] = {}
     async with AsyncSessionFactory() as session:
@@ -175,6 +163,20 @@ async def _run_ingestion_tick() -> dict[str, Any]:
     return {"status": "ok", "task": "ingestion_tick", "results": results}
 
 
+def _make_provider(settings: Any, name: str = "auto") -> Any:
+    """Instantiate a market data provider. name: 'alpaca'|'yahoo'|'auto'."""
+    use_alpaca = (name in ("alpaca", "auto")) and bool(settings.alpaca_api_key)
+    if use_alpaca:
+        from stocktopus.ingestion.alpaca_market_data import AlpacaMarketData
+        return AlpacaMarketData(
+            api_key=settings.alpaca_api_key,
+            secret_key=settings.alpaca_secret_key,
+            data_feed=settings.alpaca_data_feed or "",
+        )
+    from stocktopus.ingestion.yahoo_market_data import YahooFinanceMarketData
+    return YahooFinanceMarketData()
+
+
 # ── Historical backfill ────────────────────────────────────────────────────────
 
 
@@ -182,10 +184,11 @@ async def _run_backfill(event: dict[str, Any]) -> dict[str, Any]:
     """Run a full historical candle backfill.
 
     Event fields:
-      symbol   – ticker (e.g. "SPY"); defaults to all allowed_symbols
+      symbol    – ticker (e.g. "SPY"); defaults to all allowed_symbols
       from_date – ISO date string "YYYY-MM-DD"; default: 1 year ago
       to_date   – ISO date string "YYYY-MM-DD"; default: today
-      provider  – "alpaca" | "yahoo"; default: "alpaca" if key present, else "yahoo"
+      timeframes – list of strings; default: ["1m", "5m", "1d"]
+      provider  – "alpaca" | "yahoo"; default: "auto" (alpaca if key present)
     """
     from datetime import datetime, timedelta, timezone
 
@@ -205,23 +208,16 @@ async def _run_backfill(event: dict[str, Any]) -> dict[str, Any]:
     symbols = [symbols_raw.upper()] if symbols_raw else [s.upper() for s in settings.allowed_symbols]
 
     timeframes = event.get("timeframes", ["1m", "5m", "1d"])
-    provider_name = event.get("provider", "alpaca" if settings.alpaca_api_key else "yahoo")
-    if provider_name == "alpaca" and settings.alpaca_api_key:
-        from stocktopus.ingestion.alpaca_market_data import AlpacaMarketData
-        provider = AlpacaMarketData(
-            api_key=settings.alpaca_api_key,
-            secret_key=settings.alpaca_secret_key,
-            feed=settings.alpaca_data_feed or None,
-        )
-    else:
-        from stocktopus.ingestion.yahoo_market_data import YahooFinanceMarketData
-        provider = YahooFinanceMarketData()
+    provider_name = event.get("provider", "auto")
+    provider = _make_provider(settings, name=provider_name)
 
     results: dict[str, Any] = {}
     async with AsyncSessionFactory() as session:
         for symbol in symbols:
-            logger.info("Backfilling %s from %s to %s via %s", symbol, start.date(), end.date(), provider_name)
-            counts = await backfill(session, provider=provider, symbol=symbol, start=start, end=end, timeframes=timeframes)
+            logger.info("Backfilling %s from %s to %s [%s] via %s",
+                        symbol, start.date(), end.date(), timeframes, provider_name)
+            counts = await backfill(session, provider=provider, symbol=symbol,
+                                    start=start, end=end, timeframes=timeframes)
             await session.commit()
             results[symbol] = counts
             logger.info("Backfill %s complete: %s", symbol, counts)
