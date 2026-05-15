@@ -57,6 +57,21 @@ class Settings(BaseSettings):
     # Universe
     allowed_symbols: list[str] = Field(default=["SPY"])
 
+    # AWS Lambda / infrastructure
+    # Set LAMBDA_RUNTIME=true in Lambda env to enable AWS-specific code paths.
+    lambda_runtime: bool = False
+    # ARN of the Secrets Manager secret containing Aurora DB credentials ({"username":..,"password":..})
+    db_secret_arn: str = ""
+    # RDS Proxy endpoint for Lambda → Aurora connectivity
+    rds_proxy_endpoint: str = ""
+    # Database name (matches Aurora cluster DB name)
+    db_name: str = "stocktopus"
+    # JSON-encoded list of allowed CORS origins, e.g. '["https://example.com"]'
+    # Set via CORS_ALLOWED_ORIGINS env var in Lambda. Falls back to localhost in dev.
+    cors_allowed_origins: str = ""
+    # DynamoDB table name for runtime settings and feature flags
+    settings_table_name: str = ""
+
     # Debug / testing
     # Shift "now" by N hours — e.g. CLOCK_OFFSET_HOURS=-12 to simulate midday during off-hours.
     clock_offset_hours: int = 0

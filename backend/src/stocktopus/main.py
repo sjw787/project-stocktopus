@@ -38,13 +38,21 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    import json
+
+    if settings.cors_allowed_origins:
+        try:
+            cors_origins = json.loads(settings.cors_allowed_origins)
+        except (json.JSONDecodeError, ValueError):
+            cors_origins = [o.strip() for o in settings.cors_allowed_origins.split(",") if o.strip()]
+    elif not settings.is_production:
+        cors_origins = ["http://localhost:3000", "http://localhost:5173"]
+    else:
+        cors_origins = []
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=(
-            ["http://localhost:3000", "http://localhost:5173"]
-            if not settings.is_production
-            else []
-        ),
+        allow_origins=cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
