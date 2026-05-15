@@ -35,6 +35,7 @@ env:
   AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
   ENVIRONMENT: ${{ github.event.inputs.environment || 'prod' }}
   TF_WORKING_DIR: infra
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   # ── Tests ────────────────────────────────────────────────────────────────────
@@ -45,10 +46,10 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v6
         with:
           version: "latest"
 
@@ -79,10 +80,10 @@ jobs:
     outputs:
       image_uri: ${{ steps.meta.outputs.image_uri }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -108,7 +109,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: deploy/Dockerfile.backend
@@ -134,10 +135,10 @@ jobs:
       lambda_migrate_name: ${{ steps.outputs.outputs.lambda_migrate_name }}
       amplify_url: ${{ steps.outputs.outputs.amplify_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -231,7 +232,7 @@ jobs:
     if: ${{ inputs.run_migrations != false }}
     steps:
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
