@@ -204,6 +204,7 @@ async def _run_backfill(event: dict[str, Any]) -> dict[str, Any]:
     symbols_raw = event.get("symbol")
     symbols = [symbols_raw.upper()] if symbols_raw else [s.upper() for s in settings.allowed_symbols]
 
+    timeframes = event.get("timeframes", ["1m", "5m", "1d"])
     provider_name = event.get("provider", "alpaca" if settings.alpaca_api_key else "yahoo")
     if provider_name == "alpaca" and settings.alpaca_api_key:
         from stocktopus.ingestion.alpaca_market_data import AlpacaMarketData
@@ -220,7 +221,7 @@ async def _run_backfill(event: dict[str, Any]) -> dict[str, Any]:
     async with AsyncSessionFactory() as session:
         for symbol in symbols:
             logger.info("Backfilling %s from %s to %s via %s", symbol, start.date(), end.date(), provider_name)
-            counts = await backfill(session, provider=provider, symbol=symbol, start=start, end=end)
+            counts = await backfill(session, provider=provider, symbol=symbol, start=start, end=end, timeframes=timeframes)
             await session.commit()
             results[symbol] = counts
             logger.info("Backfill %s complete: %s", symbol, counts)
