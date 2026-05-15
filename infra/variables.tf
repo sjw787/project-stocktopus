@@ -23,9 +23,20 @@ variable "lambda_memory_mb" {
 }
 
 variable "lambda_timeout_seconds" {
-  description = "Lambda function timeout in seconds. API Gateway HTTP API integration caps at 29s but scheduled tasks can use the full duration."
+  description = "Lambda function timeout in seconds."
   type        = number
   default     = 300
+}
+
+variable "api_integration_timeout_ms" {
+  description = <<-EOT
+    API Gateway REST integration timeout in milliseconds (50–300000).
+    Exceeding 29000 requires an AWS Service Quotas increase:
+    Service Quotas → API Gateway → "Maximum integration timeout in milliseconds".
+    Default 29000 is safe before quota approval; raise to 300000 after.
+  EOT
+  type        = number
+  default     = 29000
 }
 
 variable "scheduled_lambda_timeout_seconds" {

@@ -1,0 +1,41 @@
+# Stocktopus Terraform variables for the prod environment.
+# Copy to terraform.tfvars and fill in real values before running terraform apply.
+# This file should NOT be committed to source control (add to .gitignore).
+
+environment = "prod"
+aws_region  = "us-east-1"
+
+# Container image — set by CI after ECR push; leave empty for first bootstrap apply
+image_uri = ""
+
+# GitHub
+github_repo_slug        = "samwylock/project-stocktopus"
+github_repository       = "https://github.com/samwylock/project-stocktopus"
+github_access_token     = ""  # GitHub PAT with repo scope (for Amplify)
+github_branch           = "main"
+
+# Custom domain
+domain_name           = "stocktopus.samwylock.com"
+api_subdomain         = "api.stocktopus.samwylock.com"
+create_hosted_zone    = true
+hosted_zone_id        = ""     # leave empty when create_hosted_zone = true
+custom_domain_enabled = false  # flip to true after DNS delegation is confirmed
+
+# Auth
+cognito_domain_prefix = "stocktopus-auth"
+
+# CORS — comma-separated (no spaces)
+cors_origins = "https://stocktopus.samwylock.com"
+
+# Database
+db_name     = "stocktopus"
+db_username = "stocktopus_app"
+
+# Secrets — fill in real values; changes are only applied on first terraform apply
+# (secret_string uses lifecycle { ignore_changes } so later rotations via console are preserved)
+openai_api_key    = ""
+anthropic_api_key = ""
+alpaca_api_key    = ""
+alpaca_secret_key = ""
+finnhub_api_key   = ""
+newsapi_api_key   = ""
