@@ -12,7 +12,7 @@ export function configureAuth() {
   Amplify.configure({
     Auth: {
       Cognito: {
-        userPoolId: import.meta.env.VITE_COGNITO_USER_POOL_ID,
+        userPoolId: import.meta.env.VITE_COGNITO_USER_POOL,
         userPoolClientId: import.meta.env.VITE_COGNITO_CLIENT_ID,
       },
     },
