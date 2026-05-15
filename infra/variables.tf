@@ -23,9 +23,9 @@ variable "lambda_memory_mb" {
 }
 
 variable "lambda_timeout_seconds" {
-  description = "Lambda timeout for API Gateway requests (max 29s for HTTP API)"
+  description = "Lambda function timeout in seconds. API Gateway HTTP API integration caps at 29s but scheduled tasks can use the full duration."
   type        = number
-  default     = 29
+  default     = 300
 }
 
 variable "scheduled_lambda_timeout_seconds" {
@@ -161,6 +161,11 @@ variable "alpaca_secret_key" {
   default     = ""
 }
 
+variable "alpaca_data_feed" {
+  description = "Alpaca market data feed: 'iex' (free) or 'sip' (paid subscription required)"
+  type        = string
+  default     = "iex"
+}
 variable "finnhub_api_key" {
   description = "Finnhub API key — stored in Secrets Manager"
   type        = string

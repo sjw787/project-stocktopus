@@ -40,7 +40,7 @@ locals {
 
   db_env = {
     DB_SECRET_ARN      = local.db_secret_arn
-    RDS_PROXY_ENDPOINT = aws_db_proxy.aurora.endpoint
+    RDS_PROXY_ENDPOINT = aws_rds_cluster.aurora.endpoint
     DB_NAME            = var.db_name
   }
 
@@ -52,6 +52,7 @@ locals {
     OPENAI_SECRET_ARN    = aws_secretsmanager_secret.openai.arn
     ANTHROPIC_SECRET_ARN = aws_secretsmanager_secret.anthropic.arn
     ALPACA_SECRET_ARN    = aws_secretsmanager_secret.alpaca.arn
+    ALPACA_DATA_FEED     = var.alpaca_data_feed
     FINNHUB_SECRET_ARN   = aws_secretsmanager_secret.finnhub.arn
     NEWSAPI_SECRET_ARN   = aws_secretsmanager_secret.newsapi.arn
   })

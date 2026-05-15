@@ -91,7 +91,7 @@ _mangum_handler = None
 
 def handler(event: dict[str, Any], context: Any) -> Any:
     """Lambda entrypoint — routes EventBridge Scheduler events or HTTP events."""
-    if event.get("source") in ("aws.scheduler", "scheduler"):
+    if event.get("source") in ("aws.scheduler", "scheduler") or event.get("task"):
         return _handle_scheduled_event(event, context)
 
     global _mangum_handler
@@ -148,6 +148,7 @@ async def _run_ingestion_tick() -> dict[str, Any]:
 
     from stocktopus.config import get_settings
     from stocktopus.db.engine import AsyncSessionFactory
+    from stocktopus.features.snapshot import compute_and_persist
     from stocktopus.ingestion.candle_ingest import backfill
 
     settings = get_settings()
@@ -161,7 +162,16 @@ async def _run_ingestion_tick() -> dict[str, Any]:
         for symbol in settings.allowed_symbols:
             counts = await backfill(session, provider=provider, symbol=symbol, start=start, end=now)
             await session.commit()
-            results[symbol] = counts
+            results[symbol] = {"candles": counts}
+
+        for symbol in settings.allowed_symbols:
+            try:
+                await compute_and_persist(session, symbol=symbol, ts=now)
+                await session.commit()
+                results[symbol]["features"] = "ok"
+            except Exception:
+                logger.exception("Feature snapshot failed for %s", symbol)
+                results[symbol]["features"] = "error"
 
     logger.info("Ingestion tick complete: %s", results)
     return {"status": "ok", "task": "ingestion_tick", "results": results}

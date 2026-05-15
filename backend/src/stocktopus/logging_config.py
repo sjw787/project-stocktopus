@@ -30,11 +30,14 @@ def configure_logging() -> None:
             colorize=True,
         )
 
-    logger.add(
-        "logs/stocktopus.log",
-        rotation="1 day",
-        retention="30 days",
-        compression="gz",
-        level="INFO",
-        serialize=True,
-    )
+    # Skip file logging in Lambda (read-only filesystem); CloudWatch captures stdout.
+    import os
+    if not os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+        logger.add(
+            "logs/stocktopus.log",
+            rotation="1 day",
+            retention="30 days",
+            compression="gz",
+            level="INFO",
+            serialize=True,
+        )
