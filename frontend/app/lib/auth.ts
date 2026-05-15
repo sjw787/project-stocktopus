@@ -19,11 +19,14 @@ export function configureAuth() {
   });
 }
 
-/** Returns the current user's JWT access token, or null if not signed in. */
+/**
+ * Returns the current user's Cognito ID token, or null if not signed in.
+ * API Gateway REST API Cognito User Pools authorizer validates ID tokens.
+ */
 export async function getAccessToken(): Promise<string | null> {
   try {
     const session = await fetchAuthSession();
-    return session.tokens?.accessToken?.toString() ?? null;
+    return session.tokens?.idToken?.toString() ?? null;
   } catch {
     return null;
   }
