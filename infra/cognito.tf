@@ -25,8 +25,8 @@ resource "aws_cognito_user_pool" "main" {
 
     invite_message_template {
       email_subject = "Your Stocktopus invitation"
-      email_message = "You've been invited to Stocktopus. Your temporary password is {####}. Sign in at https://stocktopus.samwylock.com and you'll be prompted to set a permanent password."
-      sms_message   = "Your Stocktopus temporary password is {####}"
+      email_message = "Hi {username}, you've been invited to Stocktopus. Your temporary password is {####}. Sign in at https://stocktopus.samwylock.com and you'll be prompted to set a permanent password."
+      sms_message   = "Your Stocktopus username is {username} and temporary password is {####}"
     }
   }
 
