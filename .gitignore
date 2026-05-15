@@ -33,3 +33,12 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# Terraform
+infra/terraform.tfvars
+infra/.terraform/
+infra/.terraform.lock.hcl
+infra/tfplan
+infra/*.tfstate
+infra/*.tfstate.backup
+backend/logs/
