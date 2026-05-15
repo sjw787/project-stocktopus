@@ -39,11 +39,17 @@ PROMPT_VERSION = "v1"
 
 def _load_prompt_template() -> str:
     path = Path(__file__).resolve()
-    # Path: backend/src/stocktopus/llm/research_director.py
-    # parents[3] = backend/
-    backend_root = path.parents[3]  # .../project-stocktopus/backend
-    prompt_file = backend_root / "prompts" / "research_director" / "v1.md"
-    return prompt_file.read_text()
+    # Local layout:  .../backend/src/stocktopus/llm/research_director.py
+    #   parents[3] = .../backend/  →  backend/prompts/research_director/v1.md
+    # Lambda layout: /var/task/stocktopus/llm/research_director.py
+    #   parents[2] = /var/task/        →  /var/task/prompts/research_director/v1.md
+    for depth in (3, 2, 4):
+        candidate = path.parents[depth] / "prompts" / "research_director" / "v1.md"
+        if candidate.exists():
+            return candidate.read_text()
+    raise FileNotFoundError(
+        f"prompt template not found; tried parents[2..4] of {path}"
+    )
 
 
 _PROMPT_TEMPLATE = _load_prompt_template()
