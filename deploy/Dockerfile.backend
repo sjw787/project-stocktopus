@@ -1,0 +1,21 @@
+FROM --platform=linux/arm64 public.ecr.aws/lambda/python:3.12
+WORKDIR /var/task
+
+# Install uv for fast, reproducible dependency resolution
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Copy dependency manifests and export a requirements.txt from the lock file,
+# then install into /var/task so Lambda can find them without PYTHONPATH tricks.
+COPY backend/pyproject.toml backend/uv.lock ./
+RUN uv export --frozen --no-dev --no-hashes -o requirements.txt && \
+    pip install --no-cache-dir -r requirements.txt --target .
+
+# Copy application source last (cheapest layer to bust on code changes).
+# Also copy alembic.ini for the migration Lambda CMD variant.
+# Prompts live outside src/ in the repo; copy them to /var/task/prompts/ so
+# research_director.py can find them at parents[2]/prompts (Lambda task root).
+COPY backend/src/ ./
+COPY backend/alembic.ini ./
+COPY backend/prompts/ ./prompts/
+
+CMD ["stocktopus.lambda_handler.handler"]
