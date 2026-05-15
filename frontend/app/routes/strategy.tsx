@@ -100,7 +100,7 @@ function defaultEnd() {
 }
 function defaultStart() {
   const d = new Date();
-  d.setMonth(d.getMonth() - 3);
+  d.setDate(d.getDate() - 30);
   return d.toISOString().slice(0, 10);
 }
 

@@ -195,9 +195,9 @@ class PaperTrader:
             regime: RegimeAssessment = await self._director.analyze(
                 self._session, symbol=self._symbol
             )
-        except RuntimeError as exc:
-            result["reason"] = str(exc)
-            logger.warning("LLM budget exceeded or error", error=str(exc))
+        except Exception as exc:
+            result["reason"] = f"llm_error: {type(exc).__name__}"
+            logger.warning("LLM call failed — skipping tick", error=str(exc))
             return result
 
         # 3. Current state

@@ -236,6 +236,9 @@ class BacktestRequest(BaseModel):
     timeframe: str = "5m"
 
 
+_MAX_BACKTEST_DAYS = 30
+
+
 class BacktestTradeOut(BaseModel):
     entry_ts: str
     exit_ts: str
@@ -273,7 +276,6 @@ async def run_backtest(
 ) -> BacktestResponse:
     """Run a quick offline backtest against stored candle data."""
 
-
     from stocktopus.backtest.runner import BacktestRunner
     from stocktopus.features.models import Regime, TradeLean
 
@@ -281,6 +283,17 @@ async def run_backtest(
 
     start_dt = datetime.fromisoformat(req.start).replace(tzinfo=UTC)
     end_dt = datetime.fromisoformat(req.end).replace(tzinfo=UTC)
+
+    span_days = (end_dt - start_dt).days
+    if span_days > _MAX_BACKTEST_DAYS:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Date range too large ({span_days} days). "
+                f"Maximum is {_MAX_BACKTEST_DAYS} days. "
+                "Narrow your date range to keep the request within the API timeout."
+            ),
+        )
 
     # Load intraday bars
     q_5m = (

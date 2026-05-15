@@ -19,7 +19,7 @@ _PRICING: dict[str, dict[str, float]] = {
     "gpt-4-turbo": {"input": 10.0, "output": 30.0},
     "gpt-3.5-turbo": {"input": 0.50, "output": 1.50},
 }
-_DEFAULT_MODEL = "gpt-4o-mini"
+_DEFAULT_MODEL = "gpt-4o"
 _FALLBACK_PRICING = _PRICING["gpt-4o-mini"]
 
 
