@@ -68,3 +68,12 @@ class Strategy(ABC):
     def evaluate(self, ctx: StrategyContext) -> TradeThesis | None:
         """Evaluate the strategy and return a TradeThesis, or None to pass."""
         ...
+
+    def evaluate_with_reason(self, ctx: StrategyContext) -> tuple[TradeThesis | None, str | None]:
+        """Like evaluate() but also returns the rejection reason when None.
+
+        Default implementation calls evaluate() and returns a generic reason.
+        Override in subclasses for detailed per-filter messages.
+        """
+        thesis = self.evaluate(ctx)
+        return thesis, (None if thesis is not None else "no_signal")

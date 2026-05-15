@@ -74,6 +74,13 @@ class OpeningMomentumStrategy(Strategy):
 
     def evaluate(self, ctx: StrategyContext) -> TradeThesis | None:  # noqa: PLR0911
         """Return a TradeThesis if all entry conditions pass, else None."""
+        thesis, _ = self.evaluate_with_reason(ctx)
+        return thesis
+
+    def evaluate_with_reason(  # noqa: PLR0911
+        self, ctx: StrategyContext
+    ) -> tuple[TradeThesis | None, str | None]:
+        """Return (TradeThesis, None) on signal, or (None, reason_string) when no signal."""
         fv = ctx.features
         ts = ctx.ts
 
@@ -82,46 +89,46 @@ class OpeningMomentumStrategy(Strategy):
         to_close = _minutes_to_close(ts.hour, ts.minute)
         if since_open < _EARLIEST_AFTER_OPEN:
             logger.debug("Too early after open", minutes_since_open=since_open)
-            return None
+            return None, f"too_early: {since_open}min since open (need {_EARLIEST_AFTER_OPEN})"
         if to_close < _LATEST_BEFORE_CLOSE:
             logger.debug("Too close to market close", minutes_to_close=to_close)
-            return None
+            return None, f"too_late: {to_close}min to close (need {_LATEST_BEFORE_CLOSE})"
 
         # ── Gap filter ────────────────────────────────────────────────────────
         gap = fv.gap_pct
         if gap is None or gap < _ENTRY["min_gap_pct"]:
             logger.debug("Gap filter failed", gap_pct=gap, required=_ENTRY["min_gap_pct"])
-            return None
+            return None, f"gap_filter: {gap:.3f}% < {_ENTRY['min_gap_pct']}%" if gap is not None else "gap_filter: gap_pct=None"
 
         # ── RVOL filter ───────────────────────────────────────────────────────
         rvol = fv.rvol
         if rvol is None or rvol < _ENTRY["min_rvol"]:
             logger.debug("RVOL filter failed", rvol=rvol, required=_ENTRY["min_rvol"])
-            return None
+            return None, f"rvol_filter: {rvol:.2f}x < {_ENTRY['min_rvol']}x" if rvol is not None else "rvol_filter: rvol=None"
 
         # ── VWAP filter ───────────────────────────────────────────────────────
         if _ENTRY["require_above_vwap"] and not fv.above_vwap:
             logger.debug("VWAP filter failed — price not above VWAP")
-            return None
+            return None, "vwap_filter: price below VWAP"
 
         # ── LLM regime filter ────────────────────────────────────────────────
         ra = ctx.regime
         if ra is None:
             logger.warning("No LLM regime assessment — failing closed")
-            return None
+            return None, "no_regime_assessment"
         if ra.lean not in {TradeLean.LONG}:
             logger.debug("LLM lean not LONG", lean=ra.lean)
-            return None
+            return None, f"regime_lean: {ra.lean} (need LONG)"
         if ra.confidence < _ENTRY["min_llm_confidence"]:
             logger.debug(
                 "LLM confidence too low",
                 confidence=ra.confidence,
                 required=_ENTRY["min_llm_confidence"],
             )
-            return None
+            return None, f"regime_confidence: {ra.confidence}/10 < {_ENTRY['min_llm_confidence']}/10"
         if ra.regime not in _ALLOWED_REGIMES:
             logger.debug("Regime not in allowed set", regime=ra.regime)
-            return None
+            return None, f"regime_type: {ra.regime} not in {sorted(_ALLOWED_REGIMES)}"
 
         # ── All filters passed — build thesis ─────────────────────────────────
         entry = fv.close
@@ -166,4 +173,4 @@ class OpeningMomentumStrategy(Strategy):
             strategy_name=self.name,
             strategy_version=self.version,
             rationale=rationale,
-        )
+        ), None

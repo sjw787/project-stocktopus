@@ -216,9 +216,9 @@ class PaperTrader:
         )
 
         # 4. Strategy signal
-        thesis = self._strategy.evaluate(ctx)
+        thesis, signal_reason = self._strategy.evaluate_with_reason(ctx)
         if thesis is None:
-            result["reason"] = "no_strategy_signal"
+            result["reason"] = f"no_strategy_signal: {signal_reason}"
             return result
 
         result["thesis"] = {
