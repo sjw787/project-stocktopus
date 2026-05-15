@@ -162,10 +162,12 @@ class ResearchDirector:
         llm: LLMProvider,
         daily_budget_usd: float = 5.0,
         model: str | None = None,
+        regime_cache_ttl_minutes: int = 15,
     ) -> None:
         self._llm = llm
         self._daily_budget = daily_budget_usd
         self._model = model
+        self._cache_ttl_minutes = regime_cache_ttl_minutes
 
     async def analyze(
         self,
@@ -179,6 +181,7 @@ class ResearchDirector:
             session: Active async DB session.
             symbol: Ticker symbol (e.g., "SPY").
             feature_snapshot_id: Optional specific snapshot UUID. If None, uses latest.
+                Pass feature_snapshot_id to bypass the cache (e.g., backtests).
 
         Returns:
             Validated RegimeAssessment.
@@ -186,6 +189,33 @@ class ResearchDirector:
         Raises:
             RuntimeError: If daily budget exceeded or all retries exhausted.
         """
+        # ── Regime cache (skip for explicit snapshot requests, e.g. backtest) ──
+        if feature_snapshot_id is None and self._cache_ttl_minutes > 0:
+            cutoff = datetime.now(UTC) - timedelta(minutes=self._cache_ttl_minutes)
+            cached_log = (
+                await session.execute(
+                    select(LLMLog)
+                    .where(LLMLog.symbol == symbol.upper())
+                    .where(LLMLog.parsed_ok.is_(True))
+                    .where(LLMLog.regime_assessment.isnot(None))
+                    .where(LLMLog.ts >= cutoff)
+                    .order_by(LLMLog.ts.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if cached_log is not None:
+                assessment = RegimeAssessment(**cached_log.regime_assessment)
+                age_seconds = (datetime.now(UTC) - cached_log.ts).total_seconds()
+                logger.info(
+                    "Regime assessment served from cache",
+                    symbol=symbol,
+                    age_seconds=int(age_seconds),
+                    cached_at=cached_log.ts.isoformat(),
+                    regime=assessment.regime,
+                    lean=assessment.lean,
+                )
+                return assessment
+
         # ── Budget guard ──────────────────────────────────────────────────────
         daily_cost = await _get_daily_cost(session)
         if daily_cost >= self._daily_budget:
