@@ -122,6 +122,10 @@ def _handle_scheduled_event(event: dict[str, Any], context: Any) -> dict[str, An
 
     if task == "ingestion_tick":
         return asyncio.run(_run_ingestion_tick())
+    elif task == "context_tick":
+        return asyncio.run(_run_context_tick())
+    elif task == "news_ingest":
+        return asyncio.run(_run_news_ingest(event))
     elif task == "paper_tick":
         return asyncio.run(_run_paper_tick())
     elif task == "backfill":
@@ -225,8 +229,73 @@ async def _run_backfill(event: dict[str, Any]) -> dict[str, Any]:
     return {"status": "ok", "task": "backfill", "results": results}
 
 
-async def _run_paper_tick() -> dict[str, Any]:
-    """Run a paper trading tick for all configured symbols if the schedule is enabled."""
+# ── Context snapshot ──────────────────────────────────────────────────────────
+
+
+async def _run_context_tick() -> dict[str, Any]:
+    """Snapshot broad-market prices into market_context."""
+    from datetime import datetime, timezone
+
+    from stocktopus.config import get_settings
+    from stocktopus.db.engine import AsyncSessionFactory
+    from stocktopus.ingestion.context_ingest import snapshot_market_context
+
+    settings = get_settings()
+    provider = _make_provider(settings)
+    now = datetime.now(timezone.utc)
+
+    async with AsyncSessionFactory() as session:
+        row = await snapshot_market_context(session, provider, now)
+
+    result = {"ts": now.isoformat(), "saved": row is not None}
+    logger.info("Context tick complete: %s", result)
+    return {"status": "ok", "task": "context_tick", **result}
+
+
+# ── News ingestion ─────────────────────────────────────────────────────────────
+
+
+async def _run_news_ingest(event: dict[str, Any]) -> dict[str, Any]:
+    """Ingest news via Finnhub for configured symbols.
+
+    Event fields (all optional):
+      symbols   – list of tickers; default: allowed_symbols
+      from_date – ISO date "YYYY-MM-DD"; default: 3 days ago
+      to_date   – ISO date "YYYY-MM-DD"; default: today
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from stocktopus.config import get_settings
+    from stocktopus.db.engine import AsyncSessionFactory
+    from stocktopus.ingestion.finnhub_news import FinnhubNewsProvider
+    from stocktopus.ingestion.news_ingest import ingest_news, ingest_macro_events
+
+    settings = get_settings()
+    if not settings.finnhub_api_key:
+        logger.error("FINNHUB_API_KEY not set — cannot run news ingestion")
+        return {"status": "error", "message": "finnhub api key not configured"}
+
+    now = datetime.now(timezone.utc)
+    from_str = event.get("from_date")
+    to_str = event.get("to_date")
+    start = datetime.strptime(from_str, "%Y-%m-%d").replace(tzinfo=timezone.utc) if from_str else now - timedelta(days=3)
+    end = datetime.strptime(to_str, "%Y-%m-%d").replace(tzinfo=timezone.utc) if to_str else now
+
+    symbols_raw = event.get("symbols")
+    symbols = [s.upper() for s in symbols_raw] if symbols_raw else [s.upper() for s in settings.allowed_symbols]
+
+    provider = FinnhubNewsProvider(api_key=settings.finnhub_api_key)
+
+    async with AsyncSessionFactory() as session:
+        news_count = await ingest_news(session, provider, symbols, start, end)
+        macro_count = await ingest_macro_events(session, provider, start, end)
+
+    result = {"news_inserted": news_count, "macro_inserted": macro_count, "symbols": symbols}
+    logger.info("News ingest complete: %s", result)
+    return {"status": "ok", "task": "news_ingest", **result}
+
+
+async def _run_paper_tick() -> dict[str, Any]:    """Run a paper trading tick for all configured symbols if the schedule is enabled."""
     if not await _schedule_enabled("paper"):
         logger.info("Paper trading schedule disabled — skipping")
         return {"status": "skipped", "reason": "schedule disabled"}

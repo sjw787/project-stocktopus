@@ -12,8 +12,9 @@ COPY uv.lock* ./
 # Install production dependencies only
 RUN uv sync --no-dev --locked
 
-# Copy application source
+# Copy application source and prompt templates
 COPY src/ src/
+COPY prompts/ prompts/
 
 ENV PYTHONPATH=/app/src
 ENV PATH="/app/.venv/bin:$PATH"
