@@ -46,9 +46,8 @@ class OpenAIProvider(LLMProvider):
             messages=[{"role": m.role, "content": m.content} for m in messages],
             max_completion_tokens=max_tokens,
         )
-        # Some newer models (e.g. gpt-5 series) only accept the default temperature (1).
-        # Skip the parameter entirely when it is the default to stay compatible.
-        if temperature != 1.0:
+        # gpt-5 series only accepts the default temperature (1); skip for those models.
+        if temperature != 1.0 and not model.startswith("gpt-5"):
             kwargs["temperature"] = temperature
         if response_schema is not None:
             # Structured JSON output — ask the model to respond with valid JSON only.
