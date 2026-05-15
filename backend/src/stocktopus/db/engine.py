@@ -12,12 +12,21 @@ from stocktopus.config import get_settings
 
 settings = get_settings()
 
-engine = create_async_engine(
-    settings.database_url,
-    echo=settings.env == "development",
-    pool_size=10,
-    max_overflow=20,
-)
+_engine_kwargs: dict = {
+    "echo": settings.env == "development",
+}
+
+if settings.lambda_runtime:
+    # Lambda: each asyncio.run() call creates a new event loop.
+    # NullPool ensures no connections are held between calls, avoiding
+    # "Future attached to a different loop" errors.
+    from sqlalchemy.pool import NullPool
+    _engine_kwargs["poolclass"] = NullPool
+else:
+    _engine_kwargs["pool_size"] = 10
+    _engine_kwargs["max_overflow"] = 20
+
+engine = create_async_engine(settings.database_url, **_engine_kwargs)
 
 AsyncSessionFactory = async_sessionmaker(
     engine,
