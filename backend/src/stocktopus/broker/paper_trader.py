@@ -225,9 +225,7 @@ class PaperTrader:
         # 1. Features
         fv_result = await self._latest_features(as_of=ts if simulated else None)
         if fv_result is None:
-            result["reason"] = (
-                "no_feature_snapshot_and_no_history" if simulated else "no_feature_snapshot"
-            )
+            result["reason"] = "no_feature_snapshot_and_no_history" if simulated else "no_feature_snapshot"
             logger.warning("No feature snapshot — skipping tick", symbol=self._symbol, simulated=simulated)
             return result
         fv, snapshot_id = fv_result
