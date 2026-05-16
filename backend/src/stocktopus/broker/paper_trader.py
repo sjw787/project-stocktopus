@@ -76,8 +76,11 @@ class PaperTrader:
         """Load the most recent feature snapshot for the symbol.
 
         If ``as_of`` is provided, returns the latest snapshot at or before that
-        timestamp (used for time-travel simulation). Returns ``(vector, id)``
-        or ``None`` if no snapshot exists.
+        timestamp (used for time-travel simulation). If no snapshot exists at
+        or before ``as_of``, one is computed on the fly from historical candles
+        and persisted, so repeat simulations at the same point are cheap.
+        Returns ``(vector, id)`` or ``None`` if no snapshot can be produced
+        (e.g. no candle history at that point).
         """
         q = (
             select(FeatureSnapshot)
@@ -89,7 +92,28 @@ class PaperTrader:
             q = q.where(FeatureSnapshot.ts <= as_of)
         row = (await self._session.execute(q)).scalar_one_or_none()
         if row is None:
-            return None
+            if as_of is None:
+                return None
+            from stocktopus.features.snapshot import compute_and_persist
+
+            logger.info(
+                "No snapshot at as_of — computing one on the fly",
+                symbol=self._symbol,
+                as_of=as_of.isoformat(),
+            )
+            try:
+                await compute_and_persist(self._session, self._symbol, ts=as_of)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "On-the-fly feature compute failed",
+                    symbol=self._symbol,
+                    as_of=as_of.isoformat(),
+                    error=str(exc),
+                )
+                return None
+            row = (await self._session.execute(q)).scalar_one_or_none()
+            if row is None:
+                return None
         return FeatureVector(**row.features), row.id
 
     async def _get_open_position_qty(self) -> float:
@@ -201,8 +225,10 @@ class PaperTrader:
         # 1. Features
         fv_result = await self._latest_features(as_of=ts if simulated else None)
         if fv_result is None:
-            result["reason"] = "no_feature_snapshot"
-            logger.warning("No feature snapshot — skipping tick", symbol=self._symbol)
+            result["reason"] = (
+                "no_feature_snapshot_and_no_history" if simulated else "no_feature_snapshot"
+            )
+            logger.warning("No feature snapshot — skipping tick", symbol=self._symbol, simulated=simulated)
             return result
         fv, snapshot_id = fv_result
 
